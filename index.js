@@ -7,46 +7,37 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
 
-/* =========================
-   ROOT → UI
-========================= */
+/* ========= ROOT ========= */
 app.get("/", (req, res) => {
   res.redirect("/ui");
 });
 
-/* =========================
-   AI SZÖVEG (OpenAI)
-========================= */
+/* ========= AI SZÖVEG ========= */
 app.post("/ai", async (req, res) => {
   try {
     const userMessage =
       req.body.message ||
-      "Kérlek, köszönj úgy, mint egy udvarias telefonos asszisztens.";
+      "Kérlek, köszönj úgy, mint egy udvarias telefonos ügyfélszolgálatos.";
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input: `
-Te egy profi, magyar nyelvű telefonos ügyfélszolgálati asszisztens vagy.
+        input: `Te egy profi, magyar nyelvű telefonos ügyfélszolgálati asszisztens vagy.
 Nyugodt, barátságos, határozott hangnemben beszélsz.
-Mindig rövid, természetes mondatokban válaszolsz.
-Soha nem mondod ki, hogy mesterséges intelligencia vagy.
+Rövid, természetes mondatokban válaszolsz.
+Soha nem mondod, hogy mesterséges intelligencia vagy.
 
-Felhasználó: ${userMessage}
-        `,
+Felhasználó: ${userMessage}`,
       }),
     });
 
     const data = await response.json();
-
-    const reply =
-      data.output_text ||
-      "Szia! Üdvözlöm, miben segíthetek?";
+    const reply = data.output_text || "Szia! Üdvözlöm, miben segíthetek?";
 
     res.json({ reply });
   } catch (err) {
@@ -55,14 +46,11 @@ Felhasználó: ${userMessage}
   }
 });
 
-/* =========================
-   BESZÉD (ElevenLabs)
-========================= */
+/* ========= ELEVENLABS BESZÉD ========= */
 app.post("/speak", async (req, res) => {
   try {
     const text =
-      req.body.text ||
-      "Szia! Itt az AIVIO. Miben segíthetek?";
+      req.body.text || "Szia! Én az AIVIO vagyok. Miben segíthetek?";
 
     const elevenResponse = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
@@ -70,7 +58,6 @@ app.post("/speak", async (req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "audio/mpeg",
           "xi-api-key": process.env.ELEVENLABS_API_KEY,
         },
         body: JSON.stringify({
@@ -85,18 +72,15 @@ app.post("/speak", async (req, res) => {
     );
 
     const audioBuffer = await elevenResponse.arrayBuffer();
-
     res.set("Content-Type", "audio/mpeg");
     res.send(Buffer.from(audioBuffer));
   } catch (err) {
     console.error(err);
-    res.status(500).send("Hiba történt a hang generálásakor.");
+    res.status(500).send("Hiba a hang generálásakor.");
   }
 });
 
-/* =========================
-   WEB UI
-========================= */
+/* ========= UI ========= */
 app.get("/ui", (req, res) => {
   res.send(`
 <!doctype html>
@@ -114,8 +98,7 @@ app.get("/ui", (req, res) => {
 
   <script>
     document.getElementById("talk").onclick = async () => {
-      // 1️⃣ AI szöveg
-      const aiRes = await fetch("/ai", {
+      const aiResponse = await fetch("/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -123,25 +106,25 @@ app.get("/ui", (req, res) => {
         })
       });
 
-      const aiData = await aiRes.json();
+      const aiData = await aiResponse.json();
 
-      // 2️⃣ Beszéd
-      const speakRes = await fetch("/speak", {
+      const speakResponse = await fetch("/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: aiData.reply })
       });
 
-      const audioBlob = await speakRes.blob();
+      const audioBlob = await speakResponse.blob();
       const audio = new Audio(URL.createObjectURL(audioBlob));
       audio.play();
     };
   </script>
 </body>
 </html>
-  `);
+`);
 });
 
+/* ========= INDÍTÁS ========= */
 app.listen(PORT, () => {
   console.log("AIVIO fut a porton:", PORT);
 });
