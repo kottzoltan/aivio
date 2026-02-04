@@ -83,3 +83,37 @@ const text =
     res.status(500).send("Hiba történt a hang generálásakor.");
   }
 });
+app.get("/ui", (req, res) => {
+  res.send(`
+    <!doctype html>
+    <html lang="hu">
+    <head>
+      <meta charset="utf-8" />
+      <title>AIVIO demo</title>
+    </head>
+    <body style="font-family: sans-serif">
+      <h1>AIVIO – webes demo</h1>
+
+      <button id="talk" style="font-size:20px;padding:10px">
+        🎤 Beszélj AIVIO-val
+      </button>
+
+      <script>
+        document.getElementById("talk").onclick = async () => {
+          const r = await fetch("/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: "Szia! Én az AIVIO vagyok. Miben segíthetek?"
+            })
+          });
+
+          const audioBlob = await r.blob();
+          const audio = new Audio(URL.createObjectURL(audioBlob));
+          audio.play();
+        };
+      </script>
+    </body>
+    </html>
+  `);
+});
