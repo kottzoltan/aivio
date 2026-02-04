@@ -1,4 +1,5 @@
 const express = require("express");
+const fetch = require("node-fetch");
 
 // Node 18+ esetén van global fetch.
 // Ha nálad nincs, akkor vagy állíts Node 18-ra, vagy add hozzá a node-fetch-et (lásd lejjebb).
