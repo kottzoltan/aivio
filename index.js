@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 8080;
 
 // Ellenőrző végpont
 app.get("/", (req, res) => {
-  res.send("AIVIO él és fut 🚀");
+  res.redirect("/ui");
 });
 
 // Valódi ChatGPT végpont
