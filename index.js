@@ -52,7 +52,7 @@ app.post("/speak", async (req, res) => {
       req.body.text || "Szia! Üdvözlöm, miben segíthetek?";
 
     const elevenResponse = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL",
+      "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
       {
         method: "POST",
         headers: {
