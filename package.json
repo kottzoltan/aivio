@@ -1,14 +1,11 @@
 {
   "name": "aivio",
   "version": "1.0.0",
-  "description": "AIVIO AI telefonos asszisztens – prototípus",
-  "main": "index.js",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "node-fetch": "^2.6.9"
+    "express": "^4.19.2"
   }
 }
