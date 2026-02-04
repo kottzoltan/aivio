@@ -48,8 +48,8 @@ app.listen(PORT, () => {
 // ElevenLabs – beszéd generálás
 app.post("/speak", async (req, res) => {
   try {
-    const text =
-      req.body.text || "Szia! Üdvözlöm, miben segíthetek?";
+const text =
+  req.body.text || "Szia! Ez az AIVIO új, magyar hangteszt verziója.";
 
     const elevenResponse = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
