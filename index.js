@@ -62,7 +62,7 @@ app.post("/speak", async (req, res) => {
         body: JSON.stringify({
           text: text,
           model_id: "eleven_multilingual_v2",
-          voice_id: "TYKLc7ViOIGE13dSZYlK",
+          voice_id: "xQ7QVYmweeFQQ6autam7",
           voice_settings: {
             stability: 0.4,
             similarity_boost: 0.8
