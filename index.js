@@ -1,5 +1,6 @@
 const express = require("express");
-const fetch = require("node-fetch");
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const app = express();
 app.use(express.json());
@@ -14,28 +15,31 @@ app.get("/", (req, res) => {
 });
 
 /* =========================
-   AI – OpenAI válasz
+   AI SZÖVEG (OpenAI)
 ========================= */
 app.post("/ai", async (req, res) => {
   try {
     const userMessage =
       req.body.message ||
-      "Köszönj úgy, mint egy udvarias magyar telefonos ügyfélszolgálati asszisztens.";
+      "Kérlek, köszönj úgy, mint egy udvarias telefonos asszisztens.";
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
+        "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input: `Te egy profi, magyar nyelvű telefonos ügyfélszolgálati asszisztens vagy.
-Nyugodt, barátságos, természetes hangnemben beszélsz.
-Soha nem mondod, hogy mesterséges intelligencia vagy.
+        input: `
+Te egy profi, magyar nyelvű telefonos ügyfélszolgálati asszisztens vagy.
+Nyugodt, barátságos, határozott hangnemben beszélsz.
+Mindig rövid, természetes mondatokban válaszolsz.
+Soha nem mondod ki, hogy mesterséges intelligencia vagy.
 
-Felhasználó: ${userMessage}`
-      })
+Felhasználó: ${userMessage}
+        `,
+      }),
     });
 
     const data = await response.json();
@@ -52,13 +56,13 @@ Felhasználó: ${userMessage}`
 });
 
 /* =========================
-   SPEAK – ElevenLabs TTS
+   BESZÉD (ElevenLabs)
 ========================= */
 app.post("/speak", async (req, res) => {
   try {
     const text =
       req.body.text ||
-      "Szia! Én az AIVIO vagyok. Miben segíthetek?";
+      "Szia! Itt az AIVIO. Miben segíthetek?";
 
     const elevenResponse = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
@@ -66,16 +70,17 @@ app.post("/speak", async (req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "xi-api-key": process.env.ELEVENLABS_API_KEY
+          "Accept": "audio/mpeg",
+          "xi-api-key": process.env.ELEVENLABS_API_KEY,
         },
         body: JSON.stringify({
           text,
           model_id: "eleven_multilingual_v2",
           voice_settings: {
             stability: 0.65,
-            similarity_boost: 0.75
-          }
-        })
+            similarity_boost: 0.75,
+          },
+        }),
       }
     );
 
@@ -90,14 +95,14 @@ app.post("/speak", async (req, res) => {
 });
 
 /* =========================
-   UI – Webes demo
+   WEB UI
 ========================= */
 app.get("/ui", (req, res) => {
   res.send(`
 <!doctype html>
 <html lang="hu">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>AIVIO demo</title>
 </head>
 <body style="font-family:sans-serif">
@@ -108,38 +113,35 @@ app.get("/ui", (req, res) => {
   </button>
 
   <script>
-    document.getElementById("talk").addEventListener("click", async () => {
-      // 1️⃣ AI válasz
-      const aiResponse = await fetch("/ai", {
+    document.getElementById("talk").onclick = async () => {
+      // 1️⃣ AI szöveg
+      const aiRes = await fetch("/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+          message: "Kérlek, köszönj úgy, mint egy udvarias telefonos asszisztens."
+        })
       });
 
-      const aiData = await aiResponse.json();
+      const aiData = await aiRes.json();
 
-      // 2️⃣ Beszéd generálás
-      const speakResponse = await fetch("/speak", {
+      // 2️⃣ Beszéd
+      const speakRes = await fetch("/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: aiData.reply })
       });
 
-      // 3️⃣ Lejátszás
-      const audioBlob = await speakResponse.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
+      const audioBlob = await speakRes.blob();
+      const audio = new Audio(URL.createObjectURL(audioBlob));
       audio.play();
-    });
+    };
   </script>
 </body>
 </html>
   `);
 });
 
-/* =========================
-   START
-========================= */
 app.listen(PORT, () => {
   console.log("AIVIO fut a porton:", PORT);
 });
