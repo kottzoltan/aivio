@@ -103,9 +103,24 @@ app.get("/ui", (req, res) => {
           const r = await fetch("/speak", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: "Szia! Én az AIVIO vagyok. Miben segíthetek?"
-            })
+         const aiResponse = await fetch("/ai", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    message: "Kérlek, köszönj úgy, mint egy udvarias telefonos asszisztens."
+  })
+});
+
+const aiData = await aiResponse.json();
+
+const r = await fetch("/speak", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    text: aiData.reply
+  })
+});
+
           });
 
           const audioBlob = await r.blob();
