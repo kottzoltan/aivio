@@ -24,7 +24,11 @@ app.post("/ai", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input: `Te egy udvarias, magyar nyelvű telefonos AI asszisztens vagy. Röviden válaszolj.\n\nFelhasználó: ${userMessage}`
+   input: `Te egy profi, magyar nyelvű telefonos ügyfélszolgálati AI asszisztens vagy. Nyugodt, barátságos, határozott hangnemben beszélsz. Mindig rövid, természetes mondatokban válaszolsz. Soha nem említed, hogy mesterséges intelligencia vagy.
+
+Felhasználó: ${userMessage}
+`
+
       })
     });
 
@@ -63,10 +67,11 @@ const text =
           text: text,
           model_id: "eleven_multilingual_v2",
           voice_id: "xQ7QVYmweeFQQ6autam7",
-          voice_settings: {
-            stability: 0.4,
-            similarity_boost: 0.8
-          }
+      voice_settings: {
+  stability: 0.65,
+  similarity_boost: 0.75
+}
+
         })
       }
     );
