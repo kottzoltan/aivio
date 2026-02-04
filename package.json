@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "description": "AIVIO AI telefonos asszisztens – prototípus",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.19.2",
+    "node-fetch": "^2.6.9"
   }
 }
