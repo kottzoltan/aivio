@@ -7,17 +7,17 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
 
-/* ========= ROOT ========= */
+/* ========== ROOT ========= */
 app.get("/", (req, res) => {
   res.redirect("/ui");
 });
 
-/* ========= AI SZÖVEG ========= */
+/* ========== AI SZÖVEG ========= */
 app.post("/ai", async (req, res) => {
   try {
     const userMessage =
       req.body.message ||
-      "Kérlek, köszönj úgy, mint egy udvarias telefonos ügyfélszolgálatos.";
+      "Kérlek, köszönj udvariasan egy bejövő telefonhívás elején.";
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -29,28 +29,31 @@ app.post("/ai", async (req, res) => {
         model: "gpt-4.1-mini",
         input: `Te egy profi, magyar nyelvű telefonos ügyfélszolgálati asszisztens vagy.
 Nyugodt, barátságos, határozott hangnemben beszélsz.
-Rövid, természetes mondatokban válaszolsz.
-Soha nem mondod, hogy mesterséges intelligencia vagy.
+Mindig rövid, természetes mondatokban válaszolsz.
 
 Felhasználó: ${userMessage}`,
       }),
     });
 
     const data = await response.json();
-    const reply = data.output_text || "Szia! Üdvözlöm, miben segíthetek?";
 
-    res.json({ reply });
+    res.json({
+      reply:
+        data.output_text ||
+        "Szia! Üdvözlöm, miben segíthetek?",
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "AI hiba történt." });
   }
 });
 
-/* ========= ELEVENLABS BESZÉD ========= */
+/* ========== ELEVENLABS TTS ========= */
 app.post("/speak", async (req, res) => {
   try {
     const text =
-      req.body.text || "Szia! Én az AIVIO vagyok. Miben segíthetek?";
+      req.body.text ||
+      "Szia! Én az AIVIO vagyok. Miben segíthetek?";
 
     const elevenResponse = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
@@ -72,15 +75,16 @@ app.post("/speak", async (req, res) => {
     );
 
     const audioBuffer = await elevenResponse.arrayBuffer();
+
     res.set("Content-Type", "audio/mpeg");
     res.send(Buffer.from(audioBuffer));
   } catch (err) {
     console.error(err);
-    res.status(500).send("Hiba a hang generálásakor.");
+    res.status(500).send("TTS hiba");
   }
 });
 
-/* ========= UI ========= */
+/* ========== UI ========= */
 app.get("/ui", (req, res) => {
   res.send(`
 <!doctype html>
@@ -92,13 +96,13 @@ app.get("/ui", (req, res) => {
 <body style="font-family:sans-serif">
   <h1>AIVIO – webes demo</h1>
 
-  <button id="talk" style="font-size:20px;padding:12px">
+  <button id="talk" style="font-size:20px;padding:10px">
     🎤 Beszélj AIVIO-val
   </button>
 
   <script>
     document.getElementById("talk").onclick = async () => {
-      const aiResponse = await fetch("/ai", {
+      const aiRes = await fetch("/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -106,16 +110,16 @@ app.get("/ui", (req, res) => {
         })
       });
 
-      const aiData = await aiResponse.json();
+      const aiData = await aiRes.json();
 
-      const speakResponse = await fetch("/speak", {
+      const speakRes = await fetch("/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: aiData.reply })
       });
 
-      const audioBlob = await speakResponse.blob();
-      const audio = new Audio(URL.createObjectURL(audioBlob));
+      const blob = await speakRes.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
       audio.play();
     };
   </script>
@@ -124,7 +128,7 @@ app.get("/ui", (req, res) => {
 `);
 });
 
-/* ========= INDÍTÁS ========= */
+/* ========== START ========= */
 app.listen(PORT, () => {
-  console.log("AIVIO fut a porton:", PORT);
+  console.log("AIVIO listening on port", PORT);
 });
