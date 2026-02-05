@@ -6,6 +6,19 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2"
-  }
+    "express": "^4.22.1"
+  },
+  "description": "",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kottzoltan/aivio.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kottzoltan/aivio/issues"
+  },
+  "homepage": "https://github.com/kottzoltan/aivio#readme"
 }

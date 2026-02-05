@@ -1,7 +1,10 @@
 import express from "express";
 
 const app = express();
+app.use("/ui", express.static("public/ui"));
+app.use("/img", express.static("public/img"));
 app.use(express.json());
+
 
 const PORT = process.env.PORT || 8080;
 
