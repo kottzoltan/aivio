@@ -6,7 +6,7 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// __dirname ES module kompatibilisen
+// __dirname ES module kompatibilis
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -25,7 +25,7 @@ app.get("/health", (req, res) => {
 });
 
 // =======================
-// 🤖 AI – OpenAI (JAVÍTOTT)
+// 🤖 AI – OpenAI (STABIL)
 // =======================
 app.post("/ai", async (req, res) => {
   try {
@@ -38,38 +38,32 @@ Szerepkör: ${agent || "általános AI asszisztens"}.
 Mindig magyarul válaszolj.
 `;
 
-    const r = await fetch("https://api.openai.com/v1/responses", {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: [
+        model: "gpt-4o-mini",
+        messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: text }
-        ]
+        ],
+        temperature: 0.4
       })
     });
 
     const data = await r.json();
 
-    // 🔑 BIZTOS válaszkinyerés
-    let answer = "Elnézést, nem tudok most válaszolni.";
-
-    if (data.output && Array.isArray(data.output)) {
-      for (const item of data.output) {
-        if (item.content && Array.isArray(item.content)) {
-          for (const c of item.content) {
-            if (c.type === "output_text") {
-              answer = c.text;
-              break;
-            }
-          }
-        }
-      }
+    if (data.error) {
+      console.error("OpenAI error:", data.error);
+      return res.json({ answer: "Elnézést, most technikai hiba történt." });
     }
+
+    const answer =
+      data.choices?.[0]?.message?.content ??
+      "Elnézést, nem tudok most válaszolni.";
 
     res.json({ answer });
   } catch (err) {
@@ -79,14 +73,14 @@ Mindig magyarul válaszolj.
 });
 
 // =======================
-// 🔊 TTS – ElevenLabs
+// 🔊 TTS – ElevenLabs (ÚJ HANG ID)
 // =======================
 app.post("/speak", async (req, res) => {
   try {
     const { text } = req.body;
 
     const r = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL",
+      "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
       {
         method: "POST",
         headers: {
