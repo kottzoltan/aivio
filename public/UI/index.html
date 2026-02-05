@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AIVIO – AI ügynök demó</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(circle at top, #1a2340, #0b1020 60%);
+      color: #e9edf7;
+    }
+
+    header {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px 24px;
+    }
+
+    h1 {
+      font-size: 42px;
+      margin: 0 0 12px;
+      letter-spacing: .3px;
+    }
+
+    p {
+      opacity: .85;
+      max-width: 720px;
+      line-height: 1.5;
+    }
+
+    .grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255,255,255,.3);
+    }
+
+    .card img {
+      width: 100%;
+      height: 160px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .card-content {
+      padding: 16px;
+    }
+
+    .card-title {
+      font-weight: 700;
+      font-size: 17px;
+    }
+
+    .card-desc {
+      margin-top: 8px;
+      font-size: 14px;
+      opacity: .8;
+      line-height: 1.4;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.1);
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>AIVIO – AI ügynök demó</h1>
+  <p>
+    Válaszd ki, milyen AI ügynököt szeretnél kipróbálni.
+    Kattintás után azonnal indul a beszéd- vagy chatdemó.
+  </p>
+</header>
+
+<section class="grid">
+
+  <div class="card" onclick="location.href='/ui/agent.html?agent=outbound_phone_sales'">
+    <img src="/img/outbound-phone.jpg">
+    <div class="card-content">
+      <div class="card-title">Kimenő telefonos sales ügynök</div>
+      <div class="card-desc">
+        Potenciális ügyfelek hívása, kvalifikálás, következő lépés egyeztetés.
+      </div>
+      <div class="tag">Voice</div>
+    </div>
+  </div>
+
+  <div class="card" onclick="location.href='/ui/agent.html?agent=outbound_email_sales'">
+    <img src="/img/outbound-email.jpg">
+    <div class="card-content">
+      <div class="card-title">Kimenő email sales ügynök</div>
+      <div class="card-desc">
+        Személyre szabott email és follow-up szövegek generálása.
+      </div>
+      <div class="tag">Email</div>
+    </div>
+  </div>
+
+  <div class="card" onclick="location.href='/ui/agent.html?agent=inbound_phone_cs'">
+    <img src="/img/inbound-support.jpg">
+    <div class="card-content">
+      <div class="card-title">Bejövő ügyfélszolgálati telefon robot</div>
+      <div class="card-desc">
+        Ügyfélkérdések kezelése, megoldás vagy továbbirányítás.
+      </div>
+      <div class="tag">Voice</div>
+    </div>
+  </div>
+
+  <div class="card" onclick="location.href='/ui/agent.html?agent=outbound_partner_data_collect'">
+    <img src="/img/data-collection.jpg">
+    <div class="card-content">
+      <div class="card-title">Adatbekérő & visszahívó robot</div>
+      <div class="card-desc">
+        Cégadatok begyűjtése, visszahívás egyeztetése határidővel.
+      </div>
+      <div class="tag">Voice + Workflow</div>
+    </div>
+  </div>
+
+</section>
+
+</body>
+</html>
