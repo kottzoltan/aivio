@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 const app = express();
 app.use(express.json());
 
-// __dirname pótlása ES module esetén
+// ES module __dirname pótlás
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -18,7 +18,7 @@ app.get("/", (req, res) => {
   res.redirect("/ui");
 });
 
-// 🔹 health / debug
+// 🔹 debug health
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
@@ -26,5 +26,5 @@ app.get("/health", (req, res) => {
 // 🔥 Cloud Run PORT
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`AIVIO UI running on port ${PORT}`);
+  console.log(`AIVIO running on port ${PORT}`);
 });
