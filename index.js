@@ -1,95 +1,83 @@
-const express = require("express");
-const fetch = require("node-fetch");
+import express from "express";
+import fetch from "node-fetch";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
-const PORT = process.env.PORT || 8080;
-
-// JSON body kezelése
 app.use(express.json());
 
-// 🔹 STATIKUS FÁJLOK (UI + KÉPEK)
-app.use("/ui", express.static("public/ui"));
-app.use("/img", express.static("public/img"));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// 🔹 GYÖKÉR → UI
-app.get("/", (req, res) => {
-  res.redirect("/ui");
-});
+// 🔹 statikus UI
+app.use("/ui", express.static(path.join(__dirname, "public/ui")));
+app.use("/img", express.static(path.join(__dirname, "public/img")));
 
-// 🔹 AI SZÖVEG GENERÁLÁS
+// 🔹 OpenAI text endpoint
 app.post("/ai", async (req, res) => {
   try {
-    const userMessage =
-      req.body.message || "Köszönj udvariasan magyarul.";
+    const { prompt } = req.body;
 
-    const response = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          input: `Te egy profi, magyar nyelvű telefonos ügyfélszolgálati asszisztens vagy.
-Röviden, természetesen válaszolsz.
-Soha nem mondod, hogy mesterséges intelligencia vagy.
+    const r = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: prompt
+      })
+    });
 
-Felhasználó: ${userMessage}`
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    const reply =
-      data.output_text ||
-      "Szia! Üdvözlöm, miben segíthetek?";
-
-    res.json({ reply });
+    const data = await r.json();
+    res.json({ text: data.output_text });
   } catch (err) {
-    console.error("AI error:", err);
-    res.status(500).json({ error: "AI hiba történt." });
+    console.error(err);
+    res.status(500).json({ error: "AI error" });
   }
 });
 
-// 🔹 ELEVENLABS – BESZÉD
+// 🔹 ElevenLabs TTS
 app.post("/speak", async (req, res) => {
   try {
-    const text =
-      req.body.text || "Szia! Ez az AIVIO hangteszt.";
+    const { text } = req.body;
 
-    const elevenResponse = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/xQ7QVYmweeFQQ6autam7",
+    const r = await fetch(
+      "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL",
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "xi-api-key": process.env.ELEVENLABS_API_KEY
+          "xi-api-key": process.env.ELEVENLABS_API_KEY,
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          text: text,
+          text,
           model_id: "eleven_multilingual_v2",
           voice_settings: {
-            stability: 0.65,
-            similarity_boost: 0.75
+            stability: 0.5,
+            similarity_boost: 0.8
           }
         })
       }
     );
 
-    const audioBuffer = await elevenResponse.arrayBuffer();
-
+    const buffer = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
-    res.send(Buffer.from(audioBuffer));
+    res.send(buffer);
   } catch (err) {
-    console.error("TTS error:", err);
-    res.status(500).send("Hiba a hang generálásakor.");
+    console.error(err);
+    res.status(500).json({ error: "TTS error" });
   }
 });
 
-// 🔹 SZERVER INDÍTÁS
+// 🔹 ROOT redirect (nagyon fontos Cloud Run-nál)
+app.get("/", (req, res) => {
+  res.redirect("/ui");
+});
+
+// 🔥 EZ A KRITIKUS SOR
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`AIVIO backend fut: http://localhost:${PORT}`);
+  console.log(`AIVIO demo running on port ${PORT}`);
 });
