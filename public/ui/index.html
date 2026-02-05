@@ -1,744 +1,534 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="hu">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>AIVIO – AI ügynök demó</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <style>
     :root{
-      --bg1:#0b1220;
-      --bg2:#0f1b33;
-      --card:rgba(255,255,255,.06);
-      --card2:rgba(255,255,255,.08);
-      --text:#ffffff;
-      --muted:rgba(255,255,255,.7);
-      --accent:#3b82f6;
-      --accent2:#2563eb;
-      --ok:#22c55e;
-      --warn:#f59e0b;
-      --err:#ef4444;
-      --border:rgba(255,255,255,.10);
+      --bg1:#07142a; --bg2:#0b1f3a;
+      --card:#0c1b30cc; --card2:#0c1b30f2;
+      --text:#eaf1ff; --muted:#a7b6d6;
+      --accent:#4da3ff; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+      --r:18px;
     }
-
     *{box-sizing:border-box}
     body{
-      margin:0;
-      font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top, #1a2744 0%, var(--bg1) 35%, var(--bg2) 100%);
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
       color:var(--text);
+      background:
+        radial-gradient(1200px 700px at 15% 10%, #173a7a55, transparent 60%),
+        radial-gradient(900px 600px at 85% 20%, #1f6feb33, transparent 55%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      min-height:100vh;
     }
-
-    .container{
-      max-width:1200px;
-      margin:38px auto;
-      padding:0 20px 60px;
-    }
-
-    header{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      margin-bottom:22px;
-    }
-
-    h1{
-      margin:0;
-      font-size:42px;
-      letter-spacing:.3px;
-    }
-
-    .subtitle{
-      margin:0;
-      color:var(--muted);
-      line-height:1.5;
-      max-width:860px;
-    }
-
+    .wrap{max-width:1200px; margin:0 auto; padding:28px 18px 22px;}
+    h1{margin:0 0 8px; font-size:44px; letter-spacing:.2px}
+    .sub{margin:0 0 18px; color:var(--muted); line-height:1.35; max-width:900px}
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      margin-top:8px;
-      flex-wrap:wrap;
+      display:flex; gap:12px; align-items:center; justify-content:space-between;
+      margin:14px 0 18px;
     }
-
     .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:8px 12px;
-      border-radius:999px;
+      display:inline-flex; align-items:center; gap:10px;
+      padding:10px 14px; border-radius:999px;
       background:rgba(255,255,255,.06);
-      border:1px solid var(--border);
-      color:var(--muted);
-      font-size:13px;
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: 0 8px 20px rgba(0,0,0,.22);
+      color:var(--text);
+      user-select:none;
     }
-
-    .pill strong{color:#fff; font-weight:600}
-
-    .btns{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-    }
-
-    button{
-      border:none;
-      border-radius:14px;
-      padding:12px 16px;
-      font-size:15px;
-      cursor:pointer;
-      background:var(--accent);
-      color:#fff;
-      transition:transform .05s ease, background .12s ease;
-    }
-    button:hover{background:var(--accent2)}
-    button:active{transform:scale(.98)}
-    button.secondary{
-      background:rgba(255,255,255,.10);
-      border:1px solid var(--border);
-    }
-    button.secondary:hover{background:rgba(255,255,255,.14)}
-    button.danger{
-      background:rgba(239,68,68,.9);
-    }
-    button.danger:hover{background:rgba(239,68,68,1)}
-    button:disabled{
-      opacity:.5;
-      cursor:not-allowed;
-    }
-
+    .dot{width:10px;height:10px;border-radius:50%}
+    .pill small{color:var(--muted)}
     .grid{
-      display:grid;
-      grid-template-columns:repeat(4, minmax(220px, 1fr));
-      gap:18px;
-      margin-top:18px;
-      margin-bottom:26px;
+      display:grid; grid-template-columns: repeat(2, minmax(0,1fr));
+      gap:16px;
     }
-
-    @media (max-width: 980px){
-      .grid{grid-template-columns:repeat(2, minmax(220px, 1fr));}
-    }
-    @media (max-width: 540px){
-      .grid{grid-template-columns:1fr;}
-      h1{font-size:34px;}
-    }
+    @media (max-width: 900px){ .grid{grid-template-columns:1fr;} h1{font-size:36px} }
 
     .card{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:18px;
-      overflow:hidden;
-      box-shadow:0 18px 40px rgba(0,0,0,.28);
-      cursor:pointer;
-      transition:transform .08s ease, background .15s ease, border-color .15s ease;
       position:relative;
+      border-radius:var(--r);
+      overflow:hidden;
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: var(--shadow);
+      cursor:pointer;
+      transform: translateZ(0);
+      transition: transform .15s ease, border-color .15s ease, filter .15s ease;
+      min-height: 215px;
     }
-    .card:hover{
-      transform:translateY(-2px);
-      background:var(--card2);
-      border-color:rgba(147,197,253,.35);
+    .card:hover{ transform: translateY(-2px); border-color: rgba(77,163,255,.45); filter: brightness(1.03); }
+    .card:active{ transform: translateY(0px); filter: brightness(.98); }
+    .card img{width:100%; height:215px; object-fit:cover; display:block; filter:saturate(1.05) contrast(1.05);}
+    .card .overlay{
+      position:absolute; inset:0;
+      background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.55) 70%, rgba(0,0,0,.70) 100%);
     }
-    .card.active{
-      border-color:rgba(59,130,246,.9);
-      box-shadow:0 20px 52px rgba(59,130,246,.10), 0 18px 40px rgba(0,0,0,.28);
+    .card .meta{
+      position:absolute; left:16px; right:16px; bottom:14px;
+      display:flex; flex-direction:column; gap:4px;
     }
-    .card img{
-      width:100%;
-      height:160px;
-      object-fit:cover;
-      display:block;
-      background:rgba(255,255,255,.04);
+    .tag{
+      position:absolute; left:14px; top:14px;
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px;
+      background: rgba(9,18,34,.55);
+      border:1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(10px);
+      font-weight:600; font-size:13px;
     }
-    .card .content{
-      padding:14px 14px 16px;
-    }
-    .card .title{
-      margin:0 0 6px 0;
-      font-size:17px;
-      font-weight:700;
-    }
-    .card .desc{
-      margin:0;
-      color:var(--muted);
-      font-size:13.5px;
-      line-height:1.35;
-    }
-    .badge{
-      position:absolute;
-      top:12px;
-      left:12px;
-      padding:6px 10px;
-      border-radius:999px;
-      font-size:12px;
-      border:1px solid var(--border);
-      background:rgba(0,0,0,.35);
-      backdrop-filter: blur(8px);
+    .tag .miniDot{width:8px;height:8px;border-radius:50%}
+    .title{font-size:22px; font-weight:800; margin:0}
+    .desc{margin:0; color:rgba(234,241,255,.82); font-size:14px}
+    .activeGlow{
+      outline: 2px solid rgba(77,163,255,.55);
+      box-shadow: 0 0 0 6px rgba(77,163,255,.12), var(--shadow);
     }
 
     .panel{
-      display:grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap:18px;
-      align-items:start;
+      margin-top:18px;
+      border-radius:var(--r);
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: var(--shadow);
+      overflow:hidden;
     }
-    @media (max-width: 980px){
-      .panel{grid-template-columns:1fr;}
+    .panelHead{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 14px;
+      background: rgba(0,0,0,.18);
+      border-bottom:1px solid rgba(255,255,255,.08);
     }
-
-    .chat{
-      background:rgba(255,255,255,.06);
-      border:1px solid var(--border);
-      border-radius:18px;
-      padding:16px;
-      min-height:180px;
-    }
-    .chat h2{
-      margin:0 0 10px 0;
-      font-size:16px;
-      color:rgba(255,255,255,.9);
-    }
-    #conversation{
-      padding:10px 10px 2px;
-      border-radius:14px;
-      background:rgba(0,0,0,.18);
-      border:1px solid rgba(255,255,255,.06);
-      min-height:120px;
-      max-height:320px;
-      overflow:auto;
-    }
-    .line{
-      margin:0 0 10px 0;
-      line-height:1.35;
-      font-size:14px;
-    }
-    .who{
-      font-weight:700;
-      color:#93c5fd;
-    }
-    .who.me{color:#a7f3d0}
-    .meta{
-      margin-top:10px;
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      color:var(--muted);
-      font-size:13px;
-    }
-
-    .side{
-      background:rgba(255,255,255,.06);
-      border:1px solid var(--border);
-      border-radius:18px;
-      padding:16px;
-    }
-    .side h2{
-      margin:0 0 10px 0;
-      font-size:16px;
-    }
-    .kv{
-      display:grid;
-      grid-template-columns: 140px 1fr;
-      gap:8px 10px;
-      font-size:13px;
-      color:var(--muted);
-      margin-bottom:12px;
-    }
-    .kv div:nth-child(odd){color:rgba(255,255,255,.85)}
-    .note{
-      font-size:13px;
-      color:var(--muted);
-      line-height:1.45;
-      border-top:1px solid rgba(255,255,255,.08);
-      padding-top:12px;
-      margin-top:10px;
-    }
-
-    .statusDot{
-      width:10px;
-      height:10px;
-      border-radius:999px;
-      background:rgba(255,255,255,.35);
-      display:inline-block;
-      box-shadow:0 0 0 3px rgba(255,255,255,.06);
-    }
-    .dotIdle{background:rgba(255,255,255,.35)}
-    .dotListening{background:var(--warn)}
-    .dotSpeaking{background:var(--accent)}
-    .dotReady{background:var(--ok)}
-    .dotError{background:var(--err)}
-
-    .small{
-      font-size:12px;
-      color:rgba(255,255,255,.6);
-    }
-
-    input[type="text"]{
-      width:100%;
-      border-radius:14px;
+    .panelHead .left{display:flex; align-items:center; gap:10px; font-weight:700}
+    .kbd{
+      font-size:12px; color:var(--muted);
       border:1px solid rgba(255,255,255,.12);
-      background:rgba(0,0,0,.22);
-      color:#fff;
-      padding:12px 12px;
-      outline:none;
-      margin-top:10px;
+      padding:4px 8px; border-radius:8px;
+      background: rgba(255,255,255,.04);
     }
-    input[type="text"]::placeholder{color:rgba(255,255,255,.45)}
-
-    .row{
-      display:flex;
-      gap:10px;
-      margin-top:10px;
-      flex-wrap:wrap;
+    .chat{
+      height: 260px;
+      overflow:auto;
+      padding:14px;
+      display:flex; flex-direction:column; gap:10px;
     }
+    .msg{
+      max-width: 78%;
+      padding:10px 12px;
+      border-radius:14px;
+      line-height:1.35;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(12,27,48,.62);
+      white-space:pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user{
+      align-self:flex-end;
+      background: rgba(77,163,255,.18);
+      border-color: rgba(77,163,255,.30);
+    }
+    .msg.agent{ align-self:flex-start; }
+    .msg .who{display:block; font-size:12px; opacity:.9; margin-bottom:4px; color:rgba(234,241,255,.82)}
+    .msg .txt{font-size:14px}
+    .hint{
+      padding:10px 14px 14px;
+      color:var(--muted);
+      font-size:13px;
+      border-top:1px solid rgba(255,255,255,.08);
+    }
+    a { color: var(--accent); text-decoration:none; }
   </style>
 </head>
-
 <body>
-  <div class="container">
+  <div class="wrap">
+    <h1>AIVIO – AI ügynök demó</h1>
+    <p class="sub">
+      Kattints egy robotra. A robot bemutatkozik hanggal és a chatben is. Amint befejezte, automatikusan hallgat, majd válaszol – és újra hallgat.
+      <br/>Tipp: <span class="kbd">ESC</span> megállít mindent (vészfék).
+    </p>
 
-    <header>
-      <h1>AIVIO – AI ügynök demó</h1>
-      <p class="subtitle">
-        Válassz egy robotot a kártyákra kattintva. A robot bemutatkozik, majd „majdnem folyamatosan” hallgat:
-        amikor befejezted a mondatot, válaszol hanggal, és utána automatikusan újra hallgat.
-      </p>
-
-      <div class="topbar">
-        <div class="pill">
-          <span class="statusDot dotIdle" id="statusDot"></span>
-          <span id="statusText">Készen áll</span>
-          <span class="small">• aktív robot: <strong id="activeAgentName">nincs</strong></span>
-        </div>
-
-        <div class="btns">
-          <button class="secondary" onclick="testSound()">🔊 Hang teszt</button>
-          <button onclick="startAuto()">🎧 Indítás (auto hallgatás)</button>
-          <button class="danger" onclick="stopAll()">⛔ Stop</button>
-        </div>
-      </div>
-    </header>
-
-    <div class="grid" id="cards">
-      <div class="card" data-agent="adel">
-        <div class="badge">Adél</div>
-        <img src="/img/outbound-phone.jpg" alt="Kimenő telefonos sales" />
-        <div class="content">
-          <div class="title">Kimenő telefonos sales</div>
-          <p class="desc">Telefonos értékesítés</p>
+    <div class="topbar">
+      <div id="statusPill" class="pill">
+        <span id="statusDot" class="dot" style="background:var(--warn)"></span>
+        <div>
+          <div id="statusMain" style="font-weight:800">Készenlét</div>
+          <small id="statusSub">Válassz egy robotot a kártyákra kattintva</small>
         </div>
       </div>
 
-      <div class="card" data-agent="ricsi">
-        <div class="badge">Ricsi</div>
-        <img src="/img/outbound-email.jpg" alt="Email sales" />
-        <div class="content">
-          <div class="title">Email sales</div>
-          <p class="desc">Email kampányok</p>
-        </div>
-      </div>
-
-      <div class="card" data-agent="ari">
-        <div class="badge">Ari</div>
-        <img src="/img/inbound-support.jpg" alt="Bejövő ügyfélszolgálat" />
-        <div class="content">
-          <div class="title">Bejövő ügyfélszolgálat</div>
-          <p class="desc">Telefonos támogatás</p>
-        </div>
-      </div>
-
-      <div class="card" data-agent="mihaly">
-        <div class="badge">Mihály</div>
-        <img src="/img/data-collection.jpg" alt="Adatbekérő robot" />
-        <div class="content">
-          <div class="title">Adatbekérő robot</div>
-          <p class="desc">Visszahívással</p>
+      <div class="pill" title="Endpointok: POST /chat (JSON), POST /speak (audio blob)">
+        <span class="dot" style="background:rgba(255,255,255,.25)"></span>
+        <div>
+          <div style="font-weight:800">Backend</div>
+          <small>/chat + /speak</small>
         </div>
       </div>
     </div>
+
+    <div id="grid" class="grid"></div>
 
     <div class="panel">
-      <section class="chat">
-        <h2>Beszélgetés</h2>
-        <div id="conversation"></div>
-
-        <input id="textInput" type="text" placeholder="Ha nem akarsz beszélni: írj ide, majd Enter…" />
-
-        <div class="row">
-          <button class="secondary" onclick="sendTyped()">💬 Küldés (chat)</button>
-          <button onclick="listenOnce()">🎤 Hallgatás most</button>
+      <div class="panelHead">
+        <div class="left">
+          <span id="activeName">Nincs aktív robot</span>
+          <span class="kbd" id="stateKbd">STATE: IDLE</span>
         </div>
-
-        <div class="meta">
-          <span>Auto hallgatás:</span>
-          <strong id="autoState">KI</strong>
-          <span class="small">• Tipp: kattints egy kártyára, majd Indítás</span>
-        </div>
-      </section>
-
-      <aside class="side">
-        <h2>Aktív robot</h2>
-        <div class="kv">
-          <div>Név</div><div id="sideName">—</div>
-          <div>Szerep</div><div id="sideRole">—</div>
-          <div>Stílus</div><div id="sideStyle">—</div>
-        </div>
-
-        <div class="note">
-          <strong>Mit jelent a „majdnem folyamatos”?</strong><br/>
-          A böngészőben a mikrofont és a hangot nem lehet ugyanúgy „teljes-duplexen” kezelni, mint telefonon.
-          Itt úgy csináljuk életszerűvé, hogy: <em>robot beszél → befejezi → automatikusan újraindítjuk a hallgatást</em>.
-          Így nem kell minden körben nyomkodni a gombot.
-        </div>
-      </aside>
+        <div class="kbd">Voice: Ari (7B7mSWflzRSaO1yGeJH6)</div>
+      </div>
+      <div id="chat" class="chat"></div>
+      <div class="hint">
+        Ha a böngésző rákérdez a mikrofonra, engedélyezd. (STT: Web Speech API – Chrome-ban működik a legjobban.)
+      </div>
     </div>
-
-    <!-- a hang lejátszást explicit audio elemmel kezeljük -->
-    <audio id="player" preload="auto"></audio>
-
   </div>
 
   <script>
-    // ─────────────────────────────────────────────
-    // 0) Állapotok + segédek
-    // ─────────────────────────────────────────────
-    const convo = document.getElementById("conversation");
-    const statusDot = document.getElementById("statusDot");
-    const statusText = document.getElementById("statusText");
-    const activeAgentNameEl = document.getElementById("activeAgentName");
-    const autoStateEl = document.getElementById("autoState");
+    /***********************
+     * CONFIG
+     ***********************/
+    const VOICE_ID_ARI = "7B7mSWflzRSaO1yGeJH6";
 
-    const sideName = document.getElementById("sideName");
-    const sideRole = document.getElementById("sideRole");
-    const sideStyle = document.getElementById("sideStyle");
-
-    const player = document.getElementById("player");
-    const textInput = document.getElementById("textInput");
-
-    let activeAgent = null;
-    let autoMode = false;
-    let recognition = null;
-    let isSpeaking = false;
-    let isListening = false;
-    let lastUserText = "";
-
-    const AGENT_INFO = {
-      adel: {
-        name: "Adél",
-        role: "Kimenő telefonos sales",
-        style: "Határozott, barátságos, proaktív."
+    // 4 robot – képek: cseréld ki a saját feltöltött URL-jeidre, ha kell
+    const AGENTS = [
+      {
+        id: "outbound_sales",
+        short: "Adél",
+        title: "Kimenő telefonos sales",
+        desc: "Telefonos értékesítés",
+        img: "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=1600&q=70",
+        intro: "Szia! Ari vagyok, a kimenő sales asszisztensed. Mondd el, kinek telefonálunk, mi az ajánlat, és mi a cél: időpont, demo, vagy azonnali lezárás?"
       },
-      ricsi: {
-        name: "Ricsi",
-        role: "Email sales",
-        style: "Strukturált, precíz, okos."
+      {
+        id: "email_sales",
+        short: "Ricsi",
+        title: "Email sales",
+        desc: "Email kampányok",
+        img: "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1600&q=70",
+        intro: "Szia! Ari vagyok, az email sales asszisztensed. Mondd el a célcsoportot, a terméket és a hangnemet, és írok egy ütős emailt – tárggyal, CTA-val."
       },
-      ari: {
-        name: "Ari",
-        role: "Bejövő ügyfélszolgálat",
-        style: "Empatikus, nyugodt, segítőkész."
+      {
+        id: "support_inbound",
+        short: "Ari",
+        title: "Bejövő ügyfélszolgálat",
+        desc: "Telefonos támogatás",
+        img: "https://images.unsplash.com/photo-1551836022-4c4c79ecde51?auto=format&fit=crop&w=1600&q=70",
+        intro: "Szia! Ari vagyok, az ügyfélszolgálati asszisztensed. Mondd el, mi a probléma röviden, és lépésről lépésre végigvezetlek a megoldáson."
       },
-      mihaly: {
-        name: "Mihály",
-        role: "Adatbekérő robot",
-        style: "Tárgyilagos, lényegre törő."
+      {
+        id: "data_collector",
+        short: "Mihály",
+        title: "Adatbekérő robot",
+        desc: "Visszahívással",
+        img: "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1600&q=70",
+        intro: "Szia! Ari vagyok, az adatbekérő asszisztensed. Kérlek mondd el, milyen adatokat gyűjtsünk be, kitől, és mi legyen a validáció: kötelező mezők, formátumok, határidők."
       }
-    };
+    ];
 
-    function setStatus(mode, text){
-      statusText.textContent = text;
-      statusDot.className = "statusDot " + mode;
+    // Backend endpointok (same-origin)
+    const ENDPOINT_CHAT  = "/chat";   // POST JSON: { agentId, text } -> { text: "..." }
+    const ENDPOINT_SPEAK = "/speak";  // POST JSON: { text, voiceId } -> audio/* blob
+
+    /***********************
+     * UI helpers
+     ***********************/
+    const elGrid = document.getElementById("grid");
+    const elChat = document.getElementById("chat");
+    const elActiveName = document.getElementById("activeName");
+    const elStateKbd = document.getElementById("stateKbd");
+    const statusDot = document.getElementById("statusDot");
+    const statusMain = document.getElementById("statusMain");
+    const statusSub = document.getElementById("statusSub");
+
+    function setStatus(kind, main, sub){
+      const map = { idle: "var(--warn)", listening:"var(--good)", speaking:"var(--accent)", error:"var(--bad)" };
+      statusDot.style.background = map[kind] || "var(--warn)";
+      statusMain.textContent = main || "";
+      statusSub.textContent = sub || "";
     }
 
-    function addLine(who, text, isMe=false){
-      const div = document.createElement("div");
-      div.className = "line";
-      const cls = isMe ? "who me" : "who";
-      div.innerHTML = `<span class="${cls}">${who}:</span> ${escapeHtml(text)}`;
-      convo.appendChild(div);
-      convo.scrollTop = convo.scrollHeight;
+    function appendMsg(who, name, text){
+      const wrap = document.createElement("div");
+      wrap.className = "msg " + (who === "user" ? "user" : "agent");
+      const whoEl = document.createElement("span");
+      whoEl.className = "who";
+      whoEl.textContent = name;
+      const txt = document.createElement("div");
+      txt.className = "txt";
+      txt.textContent = text;
+      wrap.appendChild(whoEl);
+      wrap.appendChild(txt);
+      elChat.appendChild(wrap);
+      elChat.scrollTop = elChat.scrollHeight;
+    }
+
+    function clearActiveGlow(){
+      document.querySelectorAll(".card").forEach(c => c.classList.remove("activeGlow"));
+    }
+
+    function renderCards(){
+      elGrid.innerHTML = "";
+      AGENTS.forEach(agent => {
+        const c = document.createElement("div");
+        c.className = "card";
+        c.dataset.agentId = agent.id;
+
+        c.innerHTML = `
+          <span class="tag"><span class="miniDot" style="background:rgba(255,255,255,.35)"></span>${escapeHtml(agent.short)}</span>
+          <img alt="${escapeHtml(agent.title)}" src="${agent.img}">
+          <div class="overlay"></div>
+          <div class="meta">
+            <p class="title">${escapeHtml(agent.title)}</p>
+            <p class="desc">${escapeHtml(agent.desc)}</p>
+          </div>
+        `;
+
+        c.addEventListener("click", () => startAgent(agent.id));
+        elGrid.appendChild(c);
+      });
     }
 
     function escapeHtml(s){
-      return (s || "").replace(/[&<>"']/g, (m) => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-      }[m]));
+      return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
     }
 
-    function requireAgentSelected(){
-      if (!activeAgent) {
-        addLine("AIVIO", "Először kattints egy kártyára (Adél / Ricsi / Ari / Mihály).");
+    /***********************
+     * State machine
+     ***********************/
+    let activeAgent = null;
+    let state = "IDLE"; // IDLE | SPEAKING | LISTENING | PROCESSING | ERROR
+    let currentAudio = null;
+    let micLocked = false; // prevent double starts
+    let abortAll = false;
+
+    function setState(next){
+      state = next;
+      elStateKbd.textContent = "STATE: " + next;
+    }
+
+    function hardStop(reason){
+      abortAll = true;
+
+      try { if (currentAudio) { currentAudio.pause(); currentAudio.src = ""; currentAudio = null; } } catch(e){}
+      stopListening();
+
+      micLocked = false;
+      setState("IDLE");
+      setStatus("idle", "Megállítva", reason || "Vészfék: ESC");
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hardStop("Vészfék: ESC");
+    });
+
+    /***********************
+     * Speech-to-text (Web Speech API)
+     ***********************/
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+
+    function initRecognition(){
+      if (!SpeechRecognition){
+        setStatus("error", "STT nem elérhető", "A böngésződben nincs Web Speech API. Chrome javasolt.");
+        setState("ERROR");
         return false;
       }
-      return true;
-    }
 
-    // ─────────────────────────────────────────────
-    // 1) Kártyák kattintás
-    // ─────────────────────────────────────────────
-    document.getElementById("cards").addEventListener("click", async (e) => {
-      const card = e.target.closest(".card");
-      if (!card) return;
-
-      const agent = card.getAttribute("data-agent");
-      if (!agent) return;
-
-      // UI active állapot
-      document.querySelectorAll(".card").forEach(c => c.classList.remove("active"));
-      card.classList.add("active");
-
-      activeAgent = agent;
-      activeAgentNameEl.textContent = AGENT_INFO[agent]?.name || agent;
-
-      sideName.textContent = AGENT_INFO[agent]?.name || "—";
-      sideRole.textContent = AGENT_INFO[agent]?.role || "—";
-      sideStyle.textContent = AGENT_INFO[agent]?.style || "—";
-
-      addLine("AIVIO", `Aktív robot: ${AGENT_INFO[agent].name}. Bemutatkozom…`);
-
-      // Bemutatkozás (AI + hang)
-      await speakTextViaAgent(
-        `Szia! Én ${AGENT_INFO[agent].name} vagyok, ${AGENT_INFO[agent].role} asszisztens. Mondj egy rövid mondatot, és válaszolok.`
-      );
-
-      // Ha auto mód be van kapcsolva, induljon hallgatni
-      if (autoMode) {
-        setTimeout(() => {
-          if (!isSpeaking) startListening();
-        }, 250);
-      }
-    });
-
-    // ─────────────────────────────────────────────
-    // 2) Hang teszt (biztos user-interaction)
-    // ─────────────────────────────────────────────
-    async function testSound(){
-      try{
-        setStatus("dotSpeaking", "Hang teszt...");
-        const blob = await fetchSpeakBlob("Szia! Ha ezt hallod, a hang lejátszás működik.");
-        await playBlob(blob);
-        setStatus("dotReady", "Hang OK");
-      }catch(err){
-        console.error(err);
-        setStatus("dotError", "Hang hiba");
-        addLine("AIVIO", "Hang hiba történt. Nézd a konzolt (F12).");
-      }finally{
-        if (autoMode && activeAgent && !isSpeaking) {
-          setTimeout(() => startListening(), 250);
-        }
-      }
-    }
-
-    // ─────────────────────────────────────────────
-    // 3) Auto mód vezérlés
-    // ─────────────────────────────────────────────
-    function startAuto(){
-      autoMode = true;
-      autoStateEl.textContent = "BE";
-      addLine("AIVIO", "Auto hallgatás BE. Kattints egy kártyára (ha még nem), vagy mondj valamit.");
-      if (requireAgentSelected()) startListening();
-    }
-
-    function stopAll(){
-      autoMode = false;
-      autoStateEl.textContent = "KI";
-      stopListening();
-      stopSpeaking();
-      setStatus("dotIdle", "Leállítva");
-      addLine("AIVIO", "Leállítva.");
-    }
-
-    // ─────────────────────────────────────────────
-    // 4) Egyszeri hallgatás gomb
-    // ─────────────────────────────────────────────
-    function listenOnce(){
-      if (!requireAgentSelected()) return;
-      autoMode = false;
-      autoStateEl.textContent = "KI";
-      startListening();
-    }
-
-    // ─────────────────────────────────────────────
-    // 5) Chat (Enter vagy gomb)
-    // ─────────────────────────────────────────────
-    textInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendTyped();
-    });
-
-    async function sendTyped(){
-      if (!requireAgentSelected()) return;
-      const t = (textInput.value || "").trim();
-      if (!t) return;
-      textInput.value = "";
-      addLine("Te", t, true);
-      await handleUserText(t);
-    }
-
-    // ─────────────────────────────────────────────
-    // 6) „Majdnem folyamatos” hallgatás (webkitSpeechRecognition)
-    // ─────────────────────────────────────────────
-    function startListening(){
-      if (isSpeaking) return; // amíg beszél, ne hallgasson
-      if (isListening) return;
-
-      if (!("webkitSpeechRecognition" in window)) {
-        addLine("AIVIO", "Ez a böngésző nem támogatja a beszédfelismerést (Chrome javasolt).");
-        return;
-      }
-
-      // Új recognition példány minden körben (stabilabb)
-      recognition = new webkitSpeechRecognition();
+      recognition = new SpeechRecognition();
       recognition.lang = "hu-HU";
       recognition.interimResults = false;
-      recognition.continuous = false;
+      recognition.continuous = false; // “majdnem folyamatos”: end -> újraindítjuk
 
-      isListening = true;
-      setStatus("dotListening", "Hallgat...");
-
-      recognition.onresult = async (event) => {
-        const text = event?.results?.[0]?.[0]?.transcript || "";
-        const cleaned = text.trim();
-        if (!cleaned) return;
-
-        lastUserText = cleaned;
-        addLine("Te", cleaned, true);
-
-        // feldolgozzuk (AI + hang)
-        await handleUserText(cleaned);
+      recognition.onstart = () => {
+        setState("LISTENING");
+        setStatus("listening", "Hallgatok…", "Beszélj, majd állj meg a végén.");
       };
 
-      recognition.onerror = (e) => {
-        // tipikus: no-speech, aborted, not-allowed
-        console.warn("Speech error:", e);
+      recognition.onerror = (ev) => {
+        micLocked = false;
+        setState("ERROR");
+        setStatus("error", "Mikrofon hiba", ev.error || "ismeretlen");
       };
 
       recognition.onend = () => {
-        isListening = false;
+        // Ha épp nem PROCESSING / SPEAKING, és nem abort, akkor visszafordulhatunk hallgatásba
+        micLocked = false;
+      };
 
-        // Ha auto mód és nem beszél, indítsuk újra egy kis késleltetéssel
-        if (autoMode && activeAgent && !isSpeaking) {
-          setTimeout(() => startListening(), 300);
-        } else {
-          if (!isSpeaking) setStatus("dotReady", "Készen áll");
+      recognition.onresult = async (event) => {
+        try{
+          const userText = event.results?.[0]?.[0]?.transcript?.trim() || "";
+          if (!userText) return;
+
+          appendMsg("user", "Te", userText);
+
+          setState("PROCESSING");
+          setStatus("idle", "Gondolkodom…", "Válasz készítése és beszéd…");
+
+          const reply = await callChat(activeAgent, userText);
+          appendMsg("agent", agentName(activeAgent), reply);
+
+          await speakTextViaAgent(reply);
+
+          if (!abortAll) startListening(); // loop
+        } catch(err){
+          setState("ERROR");
+          setStatus("error", "Feldolgozási hiba", err?.message || String(err));
         }
       };
 
-      try{
-        recognition.start();
-      }catch(err){
-        console.warn("Recognition start error:", err);
-        isListening = false;
-        setStatus("dotError", "Hallgatás hiba");
+      return true;
+    }
+
+    function startListening(){
+      if (abortAll) return;
+      if (!recognition && !initRecognition()) return;
+      if (!activeAgent) return;
+      if (state === "SPEAKING" || state === "PROCESSING") return;
+      if (micLocked) return;
+
+      micLocked = true;
+      try { recognition.start(); } catch(e){
+        // Chrome dobhat hibát ha már fut – ilyenkor reset és újra
+        micLocked = false;
       }
     }
 
     function stopListening(){
-      try{
-        if (recognition) recognition.abort();
-      }catch(_){}
-      recognition = null;
-      isListening = false;
+      try { if (recognition) recognition.stop(); } catch(e){}
     }
 
-    // ─────────────────────────────────────────────
-    // 7) AI → TTS → lejátszás (robot válasz)
-    // ─────────────────────────────────────────────
-    async function handleUserText(userText){
-      if (!activeAgent) return;
+    /***********************
+     * Backend calls
+     ***********************/
+    async function callChat(agentId, text){
+      const res = await fetch(ENDPOINT_CHAT, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ agentId, text })
+      });
 
-      // ha épp beszél, ne indítsunk új kört
-      if (isSpeaking) return;
+      if (!res.ok){
+        const t = await safeText(res);
+        throw new Error(`/chat HTTP ${res.status}: ${t || "no body"}`);
+      }
 
-      setStatus("dotSpeaking", "AIVIO válaszol...");
-      addLine("AIVIO", "▶️ AIVIO válaszol…");
+      const data = await res.json().catch(() => ({}));
+      const out = (data && (data.text || data.reply || data.message)) ? (data.text || data.reply || data.message) : "";
+      if (!out) throw new Error("/chat üres választ adott");
+      return out;
+    }
+
+    async function safeText(res){
+      try { return (await res.text()).slice(0, 400); } catch(e){ return ""; }
+    }
+
+    /***********************
+     * TTS (ElevenLabs proxy a backenden)
+     * FONTOS: ez a függvény globális és létezik -> ne legyen "is not defined"
+     ***********************/
+    async function speakTextViaAgent(text){
+      if (abortAll) return;
+
+      stopListening(); // beszéd alatt ne hallgasson
+      micLocked = false;
+
+      setState("SPEAKING");
+      setStatus("speaking", "Beszélek…", "Utána automatikusan hallgatok.");
+
+      const res = await fetch(ENDPOINT_SPEAK, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ text, voiceId: VOICE_ID_ARI, agentId: activeAgent })
+      });
+
+      if (!res.ok){
+        const t = await safeText(res);
+        setState("ERROR");
+        setStatus("error", "TTS hiba", `/speak HTTP ${res.status}: ${t || "no body"}`);
+        throw new Error(`TTS failed: ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      if (!blob || blob.size < 200){
+        setState("ERROR");
+        setStatus("error", "TTS hiba", "A /speak túl kicsi/üres audio blobot adott.");
+        throw new Error("Empty audio");
+      }
+
+      const url = URL.createObjectURL(blob);
+      return new Promise((resolve, reject) => {
+        try{
+          const audio = new Audio(url);
+          currentAudio = audio;
+
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            currentAudio = null;
+            resolve();
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(url);
+            currentAudio = null;
+            reject(new Error("Audio lejátszási hiba (unsupported source?)"));
+          };
+
+          audio.play().catch(err => {
+            // ha autoplay policy miatt tiltott, itt derül ki
+            reject(err);
+          });
+        } catch(e){
+          reject(e);
+        }
+      }).finally(() => {
+        if (!abortAll){
+          setState("IDLE");
+          setStatus("idle", "Készenlét", "Beszéd vége → hallgatás indul");
+        }
+      });
+    }
+
+    /***********************
+     * Flow: click a card -> intro -> speak -> listen (loop)
+     ***********************/
+    function agentById(id){ return AGENTS.find(a => a.id === id) || null; }
+    function agentName(id){ return agentById(id)?.short || "Ari"; }
+
+    async function startAgent(agentId){
+      abortAll = false;
+
+      const agent = agentById(agentId);
+      if (!agent) return;
+
+      activeAgent = agentId;
+      elActiveName.textContent = `Aktív robot: ${agent.title} (${agent.short})`;
+
+      clearActiveGlow();
+      const el = document.querySelector(`.card[data-agent-id="${agentId}"]`);
+      if (el) el.classList.add("activeGlow");
+
+      // reset chat "kicsit", de ne töröljük teljesen (ha akarod, itt lehet)
+      appendMsg("agent", agent.short, "Rendben, indulok.");
 
       try{
-        const answer = await fetchAIAnswer(userText, activeAgent);
+        appendMsg("agent", agent.short, agent.intro);
+        await speakTextViaAgent(agent.intro);
 
-        // cseréljük az utolsó "▶️" sort egy valódi válaszra (egyszerűen hozzáadjuk)
-        addLine(AGENT_INFO[activeAgent].name, answer);
-
-        const blob = await fetchSpeakBlob(answer);
-        await playBlob(blob);
-
-        setStatus("dotReady", "Készen áll");
-
-      }catch(err){
-        console.error(err);
-        setStatus("dotError", "Hiba");
-        addLine("AIVIO", "Hiba történt. Nézd a konzolt (F12).");
-      }finally{
-        // auto mód esetén újra hallgat
-        if (autoMode && activeAgent) {
-          setTimeout(() => startListening(), 250);
-        }
+        // beszéd után azonnal hallgat
+        startListening();
+      } catch(err){
+        setState("ERROR");
+        setStatus("error", "Indítási hiba", err?.message || String(err));
       }
     }
 
-    async function fetchAIAnswer(text, agent){
-      const r = await fetch("/ai", {
-        method:"POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ text, agent })
-      });
-
-      const data = await r.json().catch(() => ({}));
-      return (data.answer || "Elnézést, nem tudok most válaszolni.").trim();
-    }
-
-    async function fetchSpeakBlob(text){
-      // Megjegyzés: a voiceId a BACKENDBEN van fixen beállítva.
-      const r = await fetch("/speak", {
-        method:"POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ text })
-      });
-
-      // ha itt HTML jönne vissza, azonnal kiderül: a blob mérete gyanús + MIME nem audio
-      const blob = await r.blob();
-      return blob;
-    }
-
-    async function playBlob(blob){
-      stopSpeaking(); // előző lejátszás stop
-
-      const url = URL.createObjectURL(blob);
-      player.src = url;
-
-      isSpeaking = true;
-      setStatus("dotSpeaking", "Beszél...");
-
-      await player.play().catch((err) => {
-        // Ha a böngésző blokkolná, itt elkapjuk (általában akkor, ha nem volt user interaction)
-        console.error("Audio play blocked:", err);
-        throw err;
-      });
-
-      // Várjuk a lejátszás végét
-      await new Promise((resolve) => {
-        player.onended = () => resolve();
-      });
-
-      isSpeaking = false;
-      URL.revokeObjectURL(url);
-    }
-
-    function stopSpeaking(){
-      try{
-        player.pause();
-        player.currentTime = 0;
-      }catch(_){}
-      isSpeaking = false;
-    }
-
-    // ─────────────────────────────────────────────
-    // 8) Képernyő induláskor
-    // ─────────────────────────────────────────────
-    setStatus("dotReady", "Készen áll");
-    addLine("AIVIO", "Válassz egy robotot a kártyákra kattintva. (Adél / Ricsi / Ari / Mihály)");
+    /***********************
+     * Boot
+     ***********************/
+    renderCards();
+    setStatus("idle", "Készenlét", "Válassz egy robotot a kártyákra kattintva");
+    setState("IDLE");
   </script>
 </body>
 </html>
