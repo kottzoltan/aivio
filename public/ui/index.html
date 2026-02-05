@@ -2,29 +2,24 @@
 <html lang="hu">
 <head>
   <meta charset="UTF-8" />
-  <title>AIVIO – AI voice demo</title>
+  <title>AIVIO – AI ügynök demó</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <style>
     body {
       margin: 0;
+      padding: 40px;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background: linear-gradient(180deg, #0b1220, #0f1b33);
+      background: radial-gradient(circle at top, #162033, #0b1220 60%);
       color: #fff;
-    }
-
-    .container {
-      max-width: 1100px;
-      margin: 40px auto;
-      padding: 0 20px;
     }
 
     h1 {
       font-size: 42px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
 
-    .subtitle {
+    p {
       opacity: 0.8;
       margin-bottom: 30px;
     }
@@ -37,155 +32,130 @@
     }
 
     .card {
-      background: rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.06);
       border-radius: 16px;
-      padding: 16px;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
     }
 
     .card img {
       width: 100%;
-      border-radius: 12px;
-      margin-bottom: 10px;
+      height: 160px;
+      object-fit: cover;
+    }
+
+    .card .content {
+      padding: 16px;
+    }
+
+    .card h3 {
+      margin: 0 0 6px 0;
+      font-size: 18px;
+    }
+
+    .card span {
+      opacity: 0.7;
+      font-size: 14px;
     }
 
     button {
-      background: #3b82f6;
+      margin-top: 20px;
+      padding: 16px 26px;
+      font-size: 18px;
+      border-radius: 14px;
       border: none;
-      border-radius: 12px;
-      padding: 14px 22px;
-      font-size: 16px;
-      color: #fff;
       cursor: pointer;
-      margin-right: 10px;
-      margin-bottom: 10px;
+      background: #3b82f6;
+      color: white;
     }
 
     button:hover {
       background: #2563eb;
     }
 
-    #conversation {
-      background: rgba(255,255,255,0.05);
-      border-radius: 16px;
+    #log {
+      margin-top: 30px;
       padding: 20px;
-      min-height: 140px;
-    }
-
-    #conversation div {
-      margin-bottom: 8px;
-    }
-
-    strong {
-      color: #93c5fd;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.05);
+      min-height: 60px;
     }
   </style>
 </head>
 
 <body>
-  <div class="container">
-    <h1>AIVIO – AI voice demo</h1>
-    <div class="subtitle">
-      Kattints, beszélj, és az AIVIO válaszol hangosan.
-    </div>
 
-    <div class="cards">
-      <div class="card">
-        <img src="/img/sales-phone.jpg" />
-        <strong>Kimenő sales</strong>
-      </div>
-      <div class="card">
-        <img src="/img/email-sales.jpg" />
-        <strong>Email sales</strong>
-      </div>
-      <div class="card">
-        <img src="/img/customer-support.jpg" />
-        <strong>Ügyfélszolgálat</strong>
-      </div>
-      <div class="card">
-        <img src="/img/data-collector.jpg" />
-        <strong>Adatbekérő</strong>
+  <h1>AIVIO – AI ügynök demó</h1>
+  <p>Kattints a gombra, majd beszélj a mikrofonba.</p>
+
+  <div class="cards">
+    <div class="card">
+      <img src="/img/outbound-phone.jpg" />
+      <div class="content">
+        <h3>Kimenő telefonos sales</h3>
+        <span>Telefonos értékesítés</span>
       </div>
     </div>
 
-    <button onclick="startListening()">🎤 Beszélj AIVIO-val</button>
-    <button onclick="testSound()">🔊 Hang teszt</button>
+    <div class="card">
+      <img src="/img/outbound-email.jpg" />
+      <div class="content">
+        <h3>Email sales</h3>
+        <span>Email kampányok</span>
+      </div>
+    </div>
 
-    <div id="conversation"></div>
+    <div class="card">
+      <img src="/img/inbound-support.jpg" />
+      <div class="content">
+        <h3>Bejövő ügyfélszolgálat</h3>
+        <span>Telefonos támogatás</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <img src="/img/data-collection.jpg" />
+      <div class="content">
+        <h3>Adatbekérő robot</h3>
+        <span>Visszahívással</span>
+      </div>
+    </div>
   </div>
 
+  <button onclick="speak()">🎤 Beszélj AIVIO-val</button>
+
+  <div id="log"></div>
+
   <script>
-    let recognition;
+    const log = (t) =>
+      document.getElementById("log").innerHTML += `<div>${t}</div>`;
 
-    function startListening() {
-      if (!("webkitSpeechRecognition" in window)) {
-        alert("Ez a böngésző nem támogatja a beszédfelismerést.");
-        return;
-      }
+    function speak() {
+      log("▶️ Hang generálása…");
 
-      recognition = new webkitSpeechRecognition();
-      recognition.lang = "hu-HU";
-      recognition.interimResults = false;
-      recognition.continuous = false;
-
-      recognition.onresult = function (event) {
-        const userText = event.results[0][0].transcript;
-        addLine("Te", userText);
-        addLine("AIVIO", "▶️ AIVIO válaszol…");
-        speakWithAivio(userText);
-      };
-
-      recognition.start();
-    }
-
-    async function speakWithAivio(userText) {
-      const aiResponse = await fetch("/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: userText, agent: "demo" })
-      });
-
-      const aiData = await aiResponse.json();
-      const answer = aiData.answer || "Elnézést, nem tudok válaszolni.";
-
-      addLine("AIVIO", answer);
-
-      const ttsResponse = await fetch("/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: answer })
-      });
-
-      const audioBlob = await ttsResponse.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-
-      const audio = new Audio(audioUrl);
-      audio.play().catch(err => {
-        alert("A böngésző blokkolta a hangot. Kattints a Hang teszt gombra!");
-        console.error(err);
-      });
-    }
-
-    async function testSound() {
-      const response = await fetch("/speak", {
+      fetch("/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: "Szia! Ha ezt hallod, a hang lejátszás működik."
+          text: "Szia! Én AIVIO vagyok. Örülök, hogy beszélhetünk."
         })
+      })
+      .then(r => r.blob())
+      .then(blob => {
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = document.createElement("audio");
+        audio.src = audioUrl;
+        audio.autoplay = true;
+        audio.onplay = () => log("🔊 AIVIO megszólalt");
+        audio.onerror = () => log("❌ Hang lejátszási hiba");
+        document.body.appendChild(audio);
+      })
+      .catch(err => {
+        console.error(err);
+        log("❌ Nem sikerült hangot kérni");
       });
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.play();
-    }
-
-    function addLine(who, text) {
-      const box = document.getElementById("conversation");
-      const line = document.createElement("div");
-      line.innerHTML = "<strong>" + who + ":</strong> " + text;
-      box.appendChild(line);
     }
   </script>
+
 </body>
 </html>
