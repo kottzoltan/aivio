@@ -6,7 +6,7 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// __dirname ES module-hoz
+// __dirname ES module kompatibilisen
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -25,7 +25,7 @@ app.get("/health", (req, res) => {
 });
 
 // =======================
-// 🤖 AI – OpenAI
+// 🤖 AI – OpenAI (JAVÍTOTT)
 // =======================
 app.post("/ai", async (req, res) => {
   try {
@@ -47,20 +47,29 @@ Mindig magyarul válaszolj.
       body: JSON.stringify({
         model: "gpt-4.1-mini",
         input: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: text
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: text }
         ]
       })
     });
 
     const data = await r.json();
-    const answer = data.output_text || "Elnézést, nem tudok most válaszolni.";
+
+    // 🔑 BIZTOS válaszkinyerés
+    let answer = "Elnézést, nem tudok most válaszolni.";
+
+    if (data.output && Array.isArray(data.output)) {
+      for (const item of data.output) {
+        if (item.content && Array.isArray(item.content)) {
+          for (const c of item.content) {
+            if (c.type === "output_text") {
+              answer = c.text;
+              break;
+            }
+          }
+        }
+      }
+    }
 
     res.json({ answer });
   } catch (err) {
@@ -105,7 +114,7 @@ app.post("/speak", async (req, res) => {
 });
 
 // =======================
-// 🔥 CLOUD RUN
+// 🚀 CLOUD RUN
 // =======================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
