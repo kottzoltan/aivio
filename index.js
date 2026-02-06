@@ -1,29 +1,29 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import multer from "multer";
+import FormData from "form-data";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// ESM boilerplate
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+// ---- middleware
 app.use(express.json({ limit: "2mb" }));
 
-// 🔥 FRONTEND KISZOLGÁLÁSA ROOT-ON
-app.get("/", (req, res) => {
-  const htmlPath = path.join(__dirname, "index.html");
-
-  if (!fs.existsSync(htmlPath)) {
-    return res.status(500).send("index.html NOT FOUND in container");
-  }
-
-  res.sendFile(htmlPath);
+// ---- audio upload (Whisperhez)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB
 });
 
-// ---- CHAT (stub)
+// ---- health / root
+app.get("/", (req, res) => {
+  res.send("AIVIO backend fut");
+});
+
+/**
+ * ============================
+ * CHAT (stub – később AI logika)
+ * ============================
+ */
 app.post("/chat", (req, res) => {
   const { text, agentId } = req.body;
 
@@ -36,7 +36,11 @@ app.post("/chat", (req, res) => {
   });
 });
 
-// ---- SPEAK (ElevenLabs Flash v2.5)
+/**
+ * ============================
+ * SPEAK – ElevenLabs TTS
+ * ============================
+ */
 app.post("/speak", async (req, res) => {
   try {
     const { text, voiceId } = req.body;
@@ -72,7 +76,6 @@ app.post("/speak", async (req, res) => {
     }
 
     const audioBuffer = Buffer.from(await r.arrayBuffer());
-
     res.setHeader("Content-Type", "audio/mpeg");
     res.send(audioBuffer);
 
@@ -82,7 +85,62 @@ app.post("/speak", async (req, res) => {
   }
 });
 
-// ---- START
+/**
+ * ============================
+ * LISTEN – OpenAI Whisper STT
+ * ============================
+ */
+app.post("/listen", upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No audio received" });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("Missing OPENAI_API_KEY");
+      return res.status(500).json({ error: "Missing OpenAI API key" });
+    }
+
+    const form = new FormData();
+    form.append("file", req.file.buffer, {
+      filename: "speech.webm",
+      contentType: "audio/webm"
+    });
+    form.append("model", "whisper-1");
+    form.append("language", "hu");
+
+    const r = await fetch(
+      "https://api.openai.com/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          ...form.getHeaders()
+        },
+        body: form
+      }
+    );
+
+    const data = await r.json();
+
+    if (!data.text) {
+      console.error("Whisper error:", data);
+      return res.status(500).json({ error: "Whisper failed" });
+    }
+
+    res.json({ text: data.text });
+
+  } catch (err) {
+    console.error("LISTEN ERROR:", err);
+    res.status(500).json({ error: "STT error" });
+  }
+});
+
+/**
+ * ============================
+ * START SERVER
+ * ============================
+ */
 app.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton`);
 });
