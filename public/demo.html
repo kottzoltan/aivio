@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <title>AIVIO – AI ügynök demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at top, #0b1c33, #020814);
+      color: #fff;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 42px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      opacity: 0.8;
+      margin-bottom: 30px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+    }
+
+    .card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .card-title {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .status {
+      margin-top: 30px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      font-size: 14px;
+    }
+
+    .status span {
+      opacity: 0.8;
+    }
+
+    .log {
+      margin-top: 20px;
+      font-size: 13px;
+      opacity: 0.7;
+      white-space: pre-wrap;
+    }
+
+    .listening {
+      color: #22c55e;
+      font-weight: 600;
+    }
+
+    .thinking {
+      color: #facc15;
+      font-weight: 600;
+    }
+
+    .speaking {
+      color: #60a5fa;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>🤖 AIVIO – AI ügynök demo</h1>
+    <div class="subtitle">
+      Kattints egy robotra. Ari bemutatkozik, majd automatikusan hallgat és válaszol.
+    </div>
+
+    <div class="cards">
+      <div class="card" onclick="startRobot('outbound_sales')">
+        <img src="img/outbound-phone.jpg" alt="">
+        <div class="card-title">Kimenő telefonos sales</div>
+      </div>
+
+      <div class="card" onclick="startRobot('email_sales')">
+        <img src="img/outbound-email.jpg" alt="">
+        <div class="card-title">Email sales</div>
+      </div>
+
+      <div class="card" onclick="startRobot('support_inbound')">
+        <img src="img/inbound-support.jpg" alt="">
+        <div class="card-title">Bejövő ügyfélszolgálat</div>
+      </div>
+
+      <div class="card" onclick="startRobot('data_collection')">
+        <img src="img/data-collection.jpg" alt="">
+        <div class="card-title">Adatbekérő robot</div>
+      </div>
+    </div>
+
+    <div class="status">
+      Állapot: <span id="state">IDLE</span>
+    </div>
+
+    <div class="log" id="log"></div>
+  </div>
+
+  <script src="demo.js"></script>
+</body>
+</html>
