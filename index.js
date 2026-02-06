@@ -1,186 +1,92 @@
 import express from "express";
-import multer from "multer";
-import FormData from "form-data";
-import OpenAI from "openai";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// --------------------
-// Middleware
-// --------------------
-app.use(express.json({ limit: "2mb" }));
+// ---- VERZIÓ (ezt látod majd a böngészőben) ----
+const FRONTEND_REV = "REV_2026-02-06_23-35_STABLE";
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }
-});
+// ---- LOGOLÁS ----
+console.log("AIVIO STARTING...");
+console.log("Frontend rev:", FRONTEND_REV);
+console.log("PORT:", PORT);
+console.log("OPENAI_API_KEY present:", !!process.env.OPENAI_API_KEY);
 
-// --------------------
-// OpenAI client (AGY)
-// --------------------
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// ---- FRONTEND (INLINE HTML) ----
+const html = `
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <title>AIVIO – stabil mód</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0b1220;
+      color: #e5e7eb;
+      padding: 40px;
+    }
+    .box {
+      max-width: 800px;
+      margin: auto;
+      background: #111827;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    h1 { margin-top: 0 }
+    .ok { color: #22c55e }
+    .warn { color: #facc15 }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: #020617;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🚀 AIVIO – STABIL DEPLOY</h1>
+    <p class="ok">✔ Cloud Run konténer elindult</p>
 
-// --------------------
-// Robot definitions (mini-CMS alap)
-// --------------------
-const ROBOTS = {
-  outbound_sales: {
-    systemPrompt: `
-Te Ari vagy, egy kimenő telefonos sales asszisztens.
+    <h3>Frontend verzió</h3>
+    <div class="mono">${FRONTEND_REV}</div>
 
-Célod:
-– időpont egyeztetés
-– demo felajánlása
-– vagy a beszélgetés kulturált lezárása
+    <h3>Állapot</h3>
+    <ul>
+      <li>Backend: <b>RUNNING</b></li>
+      <li>Port: <b>${PORT}</b></li>
+      <li>OpenAI kulcs:
+        <b>${process.env.OPENAI_API_KEY ? "BEÁLLÍTVA" : "NINCS MÉG"}</b>
+      </li>
+    </ul>
 
-Stílus:
-– természetes
-– határozott
-– udvarias
-– emberi
+    <p class="warn">
+      Ez egy tudatosan leegyszerűsített verzió.<br/>
+      Innen lépésről lépésre építjük vissza a „szép” UI-t és az AI-t.
+    </p>
+  </div>
+</body>
+</html>
+`;
 
-SZABÁLYOK:
-– SOHA ne ismételd vissza szó szerint a felhasználó mondatát.
-– Ha a bemenet értelmetlen (pl. számok, zaj), kérj pontosítást.
-– Ha a beszélgetés eltér a sales céltól, tereld vissza.
-– Kezeld kifogásként a „nem érdekel” típusú válaszokat.
-– Mindig tegyél fel egy következő kérdést.
-`
-  }
-};
-
-// --------------------
-// Root / health
-// --------------------
+// ---- ROUTES ----
 app.get("/", (req, res) => {
-  res.send("AIVIO backend fut");
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
 });
 
-// --------------------
-// LISTEN – Whisper STT
-// --------------------
-app.post("/listen", upload.single("audio"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No audio received" });
-    }
-
-    const form = new FormData();
-    form.append("file", req.file.buffer, {
-      filename: "speech.webm",
-      contentType: "audio/webm"
-    });
-    form.append("model", "whisper-1");
-    form.append("language", "hu");
-
-    const r = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          ...form.getHeaders()
-        },
-        body: form
-      }
-    );
-
-    const data = await r.json();
-
-    if (!data.text) {
-      return res.status(500).json({ error: "Whisper failed" });
-    }
-
-    res.json({ text: data.text });
-
-  } catch (err) {
-    console.error("LISTEN ERROR:", err);
-    res.status(500).json({ error: "STT error" });
-  }
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    rev: FRONTEND_REV,
+    time: new Date().toISOString()
+  });
 });
 
-// --------------------
-// THINK – GPT-4.1 (DÖNTÉS)
-// --------------------
-app.post("/think", async (req, res) => {
-  try {
-    const { text, robot = "outbound_sales" } = req.body;
-
-    if (!text) {
-      return res.status(400).json({ error: "Missing text" });
-    }
-
-    const robotConfig = ROBOTS[robot];
-    if (!robotConfig) {
-      return res.status(400).json({ error: "Unknown robot" });
-    }
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
-      messages: [
-        { role: "system", content: robotConfig.systemPrompt },
-        { role: "user", content: text }
-      ],
-      temperature: 0.4
-    });
-
-    const answer = completion.choices[0].message.content;
-    res.json({ text: answer });
-
-  } catch (err) {
-    console.error("THINK ERROR:", err);
-    res.status(500).json({ error: "Thinking failed" });
-  }
-});
-
-// --------------------
-// SPEAK – ElevenLabs TTS
-// --------------------
-app.post("/speak", async (req, res) => {
-  try {
-    const { text, voiceId } = req.body;
-
-    if (!text || !voiceId) {
-      return res.status(400).send("Missing text or voiceId");
-    }
-
-    const r = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVENLABS_API_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_flash_v2_5"
-        })
-      }
-    );
-
-    if (!r.ok) {
-      const t = await r.text();
-      console.error("ElevenLabs error:", t);
-      return res.status(500).send("TTS failed");
-    }
-
-    const audioBuffer = Buffer.from(await r.arrayBuffer());
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.send(audioBuffer);
-
-  } catch (err) {
-    console.error("SPEAK ERROR:", err);
-    res.status(500).send("TTS error");
-  }
-});
-
-// --------------------
-// Start server
-// --------------------
-app.listen(PORT,"0.0.0.0", () => {
-  console.log(`AIVIO backend fut a ${PORT} porton`);
+// ---- START ----
+app.listen(PORT, () => {
+  console.log(`AIVIO listening on ${PORT}`);
 });
