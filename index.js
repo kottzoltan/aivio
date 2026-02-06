@@ -181,6 +181,6 @@ app.post("/speak", async (req, res) => {
 // --------------------
 // Start server
 // --------------------
-app.listen(PORT, () => {
+app.listen(PORT,"0.0.0.0", () => {
   console.log(`AIVIO backend fut a ${PORT} porton`);
 });
