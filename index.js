@@ -1,39 +1,39 @@
 import express from "express";
-
-// Node 18+ esetén VAN beépített fetch
-// NEM kell node-fetch import
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// ---- szükséges Node ESM boilerplate
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ---- middleware
 app.use(express.json({ limit: "2mb" }));
 
-/**
- * Health check
- */
+// ---- UI kiszolgálása
+app.use("/ui", express.static(path.join(__dirname, "ui")));
+
+// ---- root (health)
 app.get("/", (req, res) => {
   res.send("AIVIO backend fut");
 });
 
-/**
- * CHAT endpoint (egyszerű stub – később bővíthető)
- */
-app.post("/chat", async (req, res) => {
+// ---- chat (stub)
+app.post("/chat", (req, res) => {
   const { text, agentId } = req.body;
 
   if (!text) {
     return res.status(400).json({ error: "Missing text" });
   }
 
-  // MOST csak visszamondjuk (hogy a flow éljen)
   res.json({
     text: `(${agentId || "Ari"}) Ezt mondtad: ${text}`
   });
 });
 
-/**
- * SPEAK endpoint – ElevenLabs Flash v2.5
- */
+// ---- speak (ElevenLabs Flash v2.5)
 app.post("/speak", async (req, res) => {
   try {
     const { text, voiceId } = req.body;
@@ -47,7 +47,7 @@ app.post("/speak", async (req, res) => {
       return res.status(500).send("Missing ElevenLabs API key");
     }
 
-    const elevenResponse = await fetch(
+    const r = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
       {
         method: "POST",
@@ -62,19 +62,15 @@ app.post("/speak", async (req, res) => {
       }
     );
 
-    if (!elevenResponse.ok) {
-      const errText = await elevenResponse.text();
-      console.error("ElevenLabs error:", errText);
+    if (!r.ok) {
+      const t = await r.text();
+      console.error("ElevenLabs error:", t);
       return res.status(500).send("TTS failed");
     }
 
-    // 🔑 KRITIKUS RÉSZ – NINCS pipe()
-    const audioBuffer = Buffer.from(
-      await elevenResponse.arrayBuffer()
-    );
+    const audioBuffer = Buffer.from(await r.arrayBuffer());
 
     res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Length", audioBuffer.length);
     res.send(audioBuffer);
 
   } catch (err) {
@@ -83,9 +79,7 @@ app.post("/speak", async (req, res) => {
   }
 });
 
-/**
- * START SERVER
- */
+// ---- start
 app.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton`);
 });
