@@ -1,26 +1,29 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// ---- szükséges Node ESM boilerplate
+// ESM boilerplate
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ---- middleware
 app.use(express.json({ limit: "2mb" }));
 
-// ---- UI kiszolgálása
-app.use("/ui", express.static(path.join(__dirname, "ui")));
-
-// ---- root (health)
+// 🔥 FRONTEND KISZOLGÁLÁSA ROOT-ON
 app.get("/", (req, res) => {
-  res.send("AIVIO backend fut");
+  const htmlPath = path.join(__dirname, "index.html");
+
+  if (!fs.existsSync(htmlPath)) {
+    return res.status(500).send("index.html NOT FOUND in container");
+  }
+
+  res.sendFile(htmlPath);
 });
 
-// ---- chat (stub)
+// ---- CHAT (stub)
 app.post("/chat", (req, res) => {
   const { text, agentId } = req.body;
 
@@ -33,7 +36,7 @@ app.post("/chat", (req, res) => {
   });
 });
 
-// ---- speak (ElevenLabs Flash v2.5)
+// ---- SPEAK (ElevenLabs Flash v2.5)
 app.post("/speak", async (req, res) => {
   try {
     const { text, voiceId } = req.body;
@@ -79,7 +82,7 @@ app.post("/speak", async (req, res) => {
   }
 });
 
-// ---- start
+// ---- START
 app.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton`);
 });
