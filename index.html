@@ -1,534 +1,139 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="hu">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AIVIO – AI ügynök demó</title>
+  <meta charset="UTF-8" />
+  <title>AIVIO – Ari</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
-    :root{
-      --bg1:#07142a; --bg2:#0b1f3a;
-      --card:#0c1b30cc; --card2:#0c1b30f2;
-      --text:#eaf1ff; --muted:#a7b6d6;
-      --accent:#4da3ff; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-      --shadow: 0 12px 30px rgba(0,0,0,.35);
-      --r:18px;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      color:var(--text);
-      background:
-        radial-gradient(1200px 700px at 15% 10%, #173a7a55, transparent 60%),
-        radial-gradient(900px 600px at 85% 20%, #1f6feb33, transparent 55%),
-        linear-gradient(180deg, var(--bg1), var(--bg2));
-      min-height:100vh;
-    }
-    .wrap{max-width:1200px; margin:0 auto; padding:28px 18px 22px;}
-    h1{margin:0 0 8px; font-size:44px; letter-spacing:.2px}
-    .sub{margin:0 0 18px; color:var(--muted); line-height:1.35; max-width:900px}
-    .topbar{
-      display:flex; gap:12px; align-items:center; justify-content:space-between;
-      margin:14px 0 18px;
-    }
-    .pill{
-      display:inline-flex; align-items:center; gap:10px;
-      padding:10px 14px; border-radius:999px;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
-      box-shadow: 0 8px 20px rgba(0,0,0,.22);
-      color:var(--text);
-      user-select:none;
-    }
-    .dot{width:10px;height:10px;border-radius:50%}
-    .pill small{color:var(--muted)}
-    .grid{
-      display:grid; grid-template-columns: repeat(2, minmax(0,1fr));
-      gap:16px;
-    }
-    @media (max-width: 900px){ .grid{grid-template-columns:1fr;} h1{font-size:36px} }
-
-    .card{
-      position:relative;
-      border-radius:var(--r);
-      overflow:hidden;
-      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
-      border:1px solid rgba(255,255,255,.10);
-      box-shadow: var(--shadow);
-      cursor:pointer;
-      transform: translateZ(0);
-      transition: transform .15s ease, border-color .15s ease, filter .15s ease;
-      min-height: 215px;
-    }
-    .card:hover{ transform: translateY(-2px); border-color: rgba(77,163,255,.45); filter: brightness(1.03); }
-    .card:active{ transform: translateY(0px); filter: brightness(.98); }
-    .card img{width:100%; height:215px; object-fit:cover; display:block; filter:saturate(1.05) contrast(1.05);}
-    .card .overlay{
-      position:absolute; inset:0;
-      background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.55) 70%, rgba(0,0,0,.70) 100%);
-    }
-    .card .meta{
-      position:absolute; left:16px; right:16px; bottom:14px;
-      display:flex; flex-direction:column; gap:4px;
-    }
-    .tag{
-      position:absolute; left:14px; top:14px;
-      display:inline-flex; align-items:center; gap:8px;
-      padding:8px 10px; border-radius:999px;
-      background: rgba(9,18,34,.55);
-      border:1px solid rgba(255,255,255,.12);
-      backdrop-filter: blur(10px);
-      font-weight:600; font-size:13px;
-    }
-    .tag .miniDot{width:8px;height:8px;border-radius:50%}
-    .title{font-size:22px; font-weight:800; margin:0}
-    .desc{margin:0; color:rgba(234,241,255,.82); font-size:14px}
-    .activeGlow{
-      outline: 2px solid rgba(77,163,255,.55);
-      box-shadow: 0 0 0 6px rgba(77,163,255,.12), var(--shadow);
+    body {
+      background: #0b1220;
+      color: white;
+      font-family: system-ui, -apple-system;
+      text-align: center;
+      padding: 40px;
     }
 
-    .panel{
-      margin-top:18px;
-      border-radius:var(--r);
-      background: rgba(255,255,255,.05);
-      border:1px solid rgba(255,255,255,.10);
-      box-shadow: var(--shadow);
-      overflow:hidden;
+    #ari {
+      width: 260px;
+      border-radius: 16px;
+      cursor: pointer;
+      box-shadow: 0 0 40px rgba(0,150,255,.4);
+      transition: transform .2s;
     }
-    .panelHead{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:12px 14px;
-      background: rgba(0,0,0,.18);
-      border-bottom:1px solid rgba(255,255,255,.08);
+
+    #ari:active {
+      transform: scale(0.97);
     }
-    .panelHead .left{display:flex; align-items:center; gap:10px; font-weight:700}
-    .kbd{
-      font-size:12px; color:var(--muted);
-      border:1px solid rgba(255,255,255,.12);
-      padding:4px 8px; border-radius:8px;
-      background: rgba(255,255,255,.04);
+
+    #state {
+      margin-top: 20px;
+      opacity: 0.8;
+      font-size: 14px;
     }
-    .chat{
-      height: 260px;
-      overflow:auto;
-      padding:14px;
-      display:flex; flex-direction:column; gap:10px;
-    }
-    .msg{
-      max-width: 78%;
-      padding:10px 12px;
-      border-radius:14px;
-      line-height:1.35;
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(12,27,48,.62);
-      white-space:pre-wrap;
-      word-break: break-word;
-    }
-    .msg.user{
-      align-self:flex-end;
-      background: rgba(77,163,255,.18);
-      border-color: rgba(77,163,255,.30);
-    }
-    .msg.agent{ align-self:flex-start; }
-    .msg .who{display:block; font-size:12px; opacity:.9; margin-bottom:4px; color:rgba(234,241,255,.82)}
-    .msg .txt{font-size:14px}
-    .hint{
-      padding:10px 14px 14px;
-      color:var(--muted);
-      font-size:13px;
-      border-top:1px solid rgba(255,255,255,.08);
-    }
-    a { color: var(--accent); text-decoration:none; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>AIVIO – AI ügynök demó</h1>
-    <p class="sub">
-      Kattints egy robotra. A robot bemutatkozik hanggal és a chatben is. Amint befejezte, automatikusan hallgat, majd válaszol – és újra hallgat.
-      <br/>Tipp: <span class="kbd">ESC</span> megállít mindent (vészfék).
-    </p>
 
-    <div class="topbar">
-      <div id="statusPill" class="pill">
-        <span id="statusDot" class="dot" style="background:var(--warn)"></span>
-        <div>
-          <div id="statusMain" style="font-weight:800">Készenlét</div>
-          <small id="statusSub">Válassz egy robotot a kártyákra kattintva</small>
-        </div>
-      </div>
+<h1>Ari</h1>
+<p>Kattints rám és beszélj.</p>
 
-      <div class="pill" title="Endpointok: POST /chat (JSON), POST /speak (audio blob)">
-        <span class="dot" style="background:rgba(255,255,255,.25)"></span>
-        <div>
-          <div style="font-weight:800">Backend</div>
-          <small>/chat + /speak</small>
-        </div>
-      </div>
-    </div>
+<img id="ari" src="ari.png" alt="Ari" />
 
-    <div id="grid" class="grid"></div>
+<div id="state">Állapot: várakozás</div>
 
-    <div class="panel">
-      <div class="panelHead">
-        <div class="left">
-          <span id="activeName">Nincs aktív robot</span>
-          <span class="kbd" id="stateKbd">STATE: IDLE</span>
-        </div>
-        <div class="kbd">Voice: Ari (7B7mSWflzRSaO1yGeJH6)</div>
-      </div>
-      <div id="chat" class="chat"></div>
-      <div class="hint">
-        Ha a böngésző rákérdez a mikrofonra, engedélyezd. (STT: Web Speech API – Chrome-ban működik a legjobban.)
-      </div>
-    </div>
-  </div>
+<script>
+let mediaRecorder;
+let audioChunks = [];
+let isListening = false;
 
-  <script>
-    /***********************
-     * CONFIG
-     ***********************/
-    const VOICE_ID_ARI = "7B7mSWflzRSaO1yGeJH6";
+const STATE = document.getElementById("state");
+const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari hang
 
-    // 4 robot – képek: cseréld ki a saját feltöltött URL-jeidre, ha kell
-    const AGENTS = [
-      {
-        id: "outbound_sales",
-        short: "Adél",
-        title: "Kimenő telefonos sales",
-        desc: "Telefonos értékesítés",
-        img: "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=1600&q=70",
-        intro: "Szia! Ari vagyok, a kimenő sales asszisztensed. Mondd el, kinek telefonálunk, mi az ajánlat, és mi a cél: időpont, demo, vagy azonnali lezárás?"
-      },
-      {
-        id: "email_sales",
-        short: "Ricsi",
-        title: "Email sales",
-        desc: "Email kampányok",
-        img: "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1600&q=70",
-        intro: "Szia! Ari vagyok, az email sales asszisztensed. Mondd el a célcsoportot, a terméket és a hangnemet, és írok egy ütős emailt – tárggyal, CTA-val."
-      },
-      {
-        id: "support_inbound",
-        short: "Ari",
-        title: "Bejövő ügyfélszolgálat",
-        desc: "Telefonos támogatás",
-        img: "https://images.unsplash.com/photo-1551836022-4c4c79ecde51?auto=format&fit=crop&w=1600&q=70",
-        intro: "Szia! Ari vagyok, az ügyfélszolgálati asszisztensed. Mondd el, mi a probléma röviden, és lépésről lépésre végigvezetlek a megoldáson."
-      },
-      {
-        id: "data_collector",
-        short: "Mihály",
-        title: "Adatbekérő robot",
-        desc: "Visszahívással",
-        img: "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1600&q=70",
-        intro: "Szia! Ari vagyok, az adatbekérő asszisztensed. Kérlek mondd el, milyen adatokat gyűjtsünk be, kitől, és mi legyen a validáció: kötelező mezők, formátumok, határidők."
-      }
-    ];
+function setState(text) {
+  STATE.innerText = "Állapot: " + text;
+}
 
-    // Backend endpointok (same-origin)
-    const ENDPOINT_CHAT  = "/chat";   // POST JSON: { agentId, text } -> { text: "..." }
-    const ENDPOINT_SPEAK = "/speak";  // POST JSON: { text, voiceId } -> audio/* blob
+// --------- LISTEN (Whisper)
+async function startListening() {
+  if (isListening) return;
+  isListening = true;
 
-    /***********************
-     * UI helpers
-     ***********************/
-    const elGrid = document.getElementById("grid");
-    const elChat = document.getElementById("chat");
-    const elActiveName = document.getElementById("activeName");
-    const elStateKbd = document.getElementById("stateKbd");
-    const statusDot = document.getElementById("statusDot");
-    const statusMain = document.getElementById("statusMain");
-    const statusSub = document.getElementById("statusSub");
+  setState("hallgat");
 
-    function setStatus(kind, main, sub){
-      const map = { idle: "var(--warn)", listening:"var(--good)", speaking:"var(--accent)", error:"var(--bad)" };
-      statusDot.style.background = map[kind] || "var(--warn)";
-      statusMain.textContent = main || "";
-      statusSub.textContent = sub || "";
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  audioChunks = [];
+
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+  mediaRecorder.onstop = async () => {
+    isListening = false;
+    setState("gondolkodik");
+
+    const blob = new Blob(audioChunks, { type: "audio/webm" });
+    const form = new FormData();
+    form.append("audio", blob);
+
+    // STT
+    const stt = await fetch("/listen", {
+      method: "POST",
+      body: form
+    }).then(r => r.json());
+
+    if (!stt.text) {
+      setState("nem értette, újra hallgat");
+      return startListening();
     }
 
-    function appendMsg(who, name, text){
-      const wrap = document.createElement("div");
-      wrap.className = "msg " + (who === "user" ? "user" : "agent");
-      const whoEl = document.createElement("span");
-      whoEl.className = "who";
-      whoEl.textContent = name;
-      const txt = document.createElement("div");
-      txt.className = "txt";
-      txt.textContent = text;
-      wrap.appendChild(whoEl);
-      wrap.appendChild(txt);
-      elChat.appendChild(wrap);
-      elChat.scrollTop = elChat.scrollHeight;
+    // THINK
+    const think = await fetch("/think", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: stt.text,
+        robot: "outbound_sales"
+      })
+    }).then(r => r.json());
+
+    if (!think.text) {
+      setState("nem tud válaszolni");
+      return;
     }
 
-    function clearActiveGlow(){
-      document.querySelectorAll(".card").forEach(c => c.classList.remove("activeGlow"));
+    // SPEAK
+    speak(think.text);
+  };
+
+  mediaRecorder.start();
+
+  // 5 mp beszédablak (később VAD-ra cserélhető)
+  setTimeout(() => {
+    if (mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
     }
+  }, 5000);
+}
 
-    function renderCards(){
-      elGrid.innerHTML = "";
-      AGENTS.forEach(agent => {
-        const c = document.createElement("div");
-        c.className = "card";
-        c.dataset.agentId = agent.id;
+// --------- SPEAK (ElevenLabs)
+function speak(text) {
+  setState("beszél");
 
-        c.innerHTML = `
-          <span class="tag"><span class="miniDot" style="background:rgba(255,255,255,.35)"></span>${escapeHtml(agent.short)}</span>
-          <img alt="${escapeHtml(agent.title)}" src="${agent.img}">
-          <div class="overlay"></div>
-          <div class="meta">
-            <p class="title">${escapeHtml(agent.title)}</p>
-            <p class="desc">${escapeHtml(agent.desc)}</p>
-          </div>
-        `;
+  const audio = new Audio();
+  audio.src = `/speak?voiceId=${VOICE_ID}&text=${encodeURIComponent(text)}`;
+  audio.play();
 
-        c.addEventListener("click", () => startAgent(agent.id));
-        elGrid.appendChild(c);
-      });
-    }
+  audio.onended = () => {
+    setState("válaszolt, újra hallgat");
+    startListening();
+  };
+}
 
-    function escapeHtml(s){
-      return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
-    }
+// --------- START (user gesture!)
+document.getElementById("ari").onclick = () => {
+  speak("Szia, Ari vagyok. Mondj pár szót, és azonnal reagálok.");
+};
+</script>
 
-    /***********************
-     * State machine
-     ***********************/
-    let activeAgent = null;
-    let state = "IDLE"; // IDLE | SPEAKING | LISTENING | PROCESSING | ERROR
-    let currentAudio = null;
-    let micLocked = false; // prevent double starts
-    let abortAll = false;
-
-    function setState(next){
-      state = next;
-      elStateKbd.textContent = "STATE: " + next;
-    }
-
-    function hardStop(reason){
-      abortAll = true;
-
-      try { if (currentAudio) { currentAudio.pause(); currentAudio.src = ""; currentAudio = null; } } catch(e){}
-      stopListening();
-
-      micLocked = false;
-      setState("IDLE");
-      setStatus("idle", "Megállítva", reason || "Vészfék: ESC");
-    }
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") hardStop("Vészfék: ESC");
-    });
-
-    /***********************
-     * Speech-to-text (Web Speech API)
-     ***********************/
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition = null;
-
-    function initRecognition(){
-      if (!SpeechRecognition){
-        setStatus("error", "STT nem elérhető", "A böngésződben nincs Web Speech API. Chrome javasolt.");
-        setState("ERROR");
-        return false;
-      }
-
-      recognition = new SpeechRecognition();
-      recognition.lang = "hu-HU";
-      recognition.interimResults = false;
-      recognition.continuous = false; // “majdnem folyamatos”: end -> újraindítjuk
-
-      recognition.onstart = () => {
-        setState("LISTENING");
-        setStatus("listening", "Hallgatok…", "Beszélj, majd állj meg a végén.");
-      };
-
-      recognition.onerror = (ev) => {
-        micLocked = false;
-        setState("ERROR");
-        setStatus("error", "Mikrofon hiba", ev.error || "ismeretlen");
-      };
-
-      recognition.onend = () => {
-        // Ha épp nem PROCESSING / SPEAKING, és nem abort, akkor visszafordulhatunk hallgatásba
-        micLocked = false;
-      };
-
-      recognition.onresult = async (event) => {
-        try{
-          const userText = event.results?.[0]?.[0]?.transcript?.trim() || "";
-          if (!userText) return;
-
-          appendMsg("user", "Te", userText);
-
-          setState("PROCESSING");
-          setStatus("idle", "Gondolkodom…", "Válasz készítése és beszéd…");
-
-          const reply = await callChat(activeAgent, userText);
-          appendMsg("agent", agentName(activeAgent), reply);
-
-          await speakTextViaAgent(reply);
-
-          if (!abortAll) startListening(); // loop
-        } catch(err){
-          setState("ERROR");
-          setStatus("error", "Feldolgozási hiba", err?.message || String(err));
-        }
-      };
-
-      return true;
-    }
-
-    function startListening(){
-      if (abortAll) return;
-      if (!recognition && !initRecognition()) return;
-      if (!activeAgent) return;
-      if (state === "SPEAKING" || state === "PROCESSING") return;
-      if (micLocked) return;
-
-      micLocked = true;
-      try { recognition.start(); } catch(e){
-        // Chrome dobhat hibát ha már fut – ilyenkor reset és újra
-        micLocked = false;
-      }
-    }
-
-    function stopListening(){
-      try { if (recognition) recognition.stop(); } catch(e){}
-    }
-
-    /***********************
-     * Backend calls
-     ***********************/
-    async function callChat(agentId, text){
-      const res = await fetch(ENDPOINT_CHAT, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ agentId, text })
-      });
-
-      if (!res.ok){
-        const t = await safeText(res);
-        throw new Error(`/chat HTTP ${res.status}: ${t || "no body"}`);
-      }
-
-      const data = await res.json().catch(() => ({}));
-      const out = (data && (data.text || data.reply || data.message)) ? (data.text || data.reply || data.message) : "";
-      if (!out) throw new Error("/chat üres választ adott");
-      return out;
-    }
-
-    async function safeText(res){
-      try { return (await res.text()).slice(0, 400); } catch(e){ return ""; }
-    }
-
-    /***********************
-     * TTS (ElevenLabs proxy a backenden)
-     * FONTOS: ez a függvény globális és létezik -> ne legyen "is not defined"
-     ***********************/
-    async function speakTextViaAgent(text){
-      if (abortAll) return;
-
-      stopListening(); // beszéd alatt ne hallgasson
-      micLocked = false;
-
-      setState("SPEAKING");
-      setStatus("speaking", "Beszélek…", "Utána automatikusan hallgatok.");
-
-      const res = await fetch(ENDPOINT_SPEAK, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ text, voiceId: VOICE_ID_ARI, agentId: activeAgent })
-      });
-
-      if (!res.ok){
-        const t = await safeText(res);
-        setState("ERROR");
-        setStatus("error", "TTS hiba", `/speak HTTP ${res.status}: ${t || "no body"}`);
-        throw new Error(`TTS failed: ${res.status}`);
-      }
-
-      const blob = await res.blob();
-      if (!blob || blob.size < 200){
-        setState("ERROR");
-        setStatus("error", "TTS hiba", "A /speak túl kicsi/üres audio blobot adott.");
-        throw new Error("Empty audio");
-      }
-
-      const url = URL.createObjectURL(blob);
-      return new Promise((resolve, reject) => {
-        try{
-          const audio = new Audio(url);
-          currentAudio = audio;
-
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            currentAudio = null;
-            resolve();
-          };
-          audio.onerror = () => {
-            URL.revokeObjectURL(url);
-            currentAudio = null;
-            reject(new Error("Audio lejátszási hiba (unsupported source?)"));
-          };
-
-          audio.play().catch(err => {
-            // ha autoplay policy miatt tiltott, itt derül ki
-            reject(err);
-          });
-        } catch(e){
-          reject(e);
-        }
-      }).finally(() => {
-        if (!abortAll){
-          setState("IDLE");
-          setStatus("idle", "Készenlét", "Beszéd vége → hallgatás indul");
-        }
-      });
-    }
-
-    /***********************
-     * Flow: click a card -> intro -> speak -> listen (loop)
-     ***********************/
-    function agentById(id){ return AGENTS.find(a => a.id === id) || null; }
-    function agentName(id){ return agentById(id)?.short || "Ari"; }
-
-    async function startAgent(agentId){
-      abortAll = false;
-
-      const agent = agentById(agentId);
-      if (!agent) return;
-
-      activeAgent = agentId;
-      elActiveName.textContent = `Aktív robot: ${agent.title} (${agent.short})`;
-
-      clearActiveGlow();
-      const el = document.querySelector(`.card[data-agent-id="${agentId}"]`);
-      if (el) el.classList.add("activeGlow");
-
-      // reset chat "kicsit", de ne töröljük teljesen (ha akarod, itt lehet)
-      appendMsg("agent", agent.short, "Rendben, indulok.");
-
-      try{
-        appendMsg("agent", agent.short, agent.intro);
-        await speakTextViaAgent(agent.intro);
-
-        // beszéd után azonnal hallgat
-        startListening();
-      } catch(err){
-        setState("ERROR");
-        setStatus("error", "Indítási hiba", err?.message || String(err));
-      }
-    }
-
-    /***********************
-     * Boot
-     ***********************/
-    renderCards();
-    setStatus("idle", "Készenlét", "Válassz egy robotot a kártyákra kattintva");
-    setState("IDLE");
-  </script>
 </body>
 </html>
