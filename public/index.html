@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIVIO – AI ügynök demó</title>
+  <style>
+    :root {
+      --bg1:#071023; --bg2:#0b1f3d; --card:#0f1b33; --muted:#93a4c7; --text:#e7eefc;
+      --border: rgba(255,255,255,.10); --glow: rgba(90,160,255,.35);
+      --pill: rgba(255,255,255,.08);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      background: radial-gradient(1200px 700px at 20% 10%, #123b7a 0%, transparent 60%),
+                  radial-gradient(900px 600px at 80% 0%, #0a2a63 0%, transparent 55%),
+                  linear-gradient(180deg, var(--bg1), var(--bg2));
+      color:var(--text);
+    }
+    .wrap{max-width:1200px; margin:0 auto; padding:34px 22px 50px}
+    h1{font-size:44px; margin:0 0 10px}
+    .sub{color:var(--muted); font-size:16px; line-height:1.4}
+    .toprow{display:flex; align-items:center; gap:14px; margin-top:16px; flex-wrap:wrap}
+    .pill{
+      display:inline-flex; align-items:center; gap:10px;
+      background: var(--pill); border:1px solid var(--border);
+      border-radius:999px; padding:10px 14px; color:var(--muted);
+      backdrop-filter: blur(8px);
+    }
+    .dot{width:10px; height:10px; border-radius:999px; background:#22c55e}
+    .dot.err{background:#ef4444}
+    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:18px}
+    @media (max-width: 900px){ .grid{grid-template-columns:1fr} h1{font-size:34px} }
+    .card{
+      background: rgba(15,27,51,.72);
+      border:1px solid var(--border);
+      border-radius:20px; overflow:hidden;
+      box-shadow: 0 25px 70px rgba(0,0,0,.45);
+      position:relative;
+      cursor:pointer;
+      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+    .card:hover{ transform: translateY(-2px); border-color: rgba(120,190,255,.35); box-shadow: 0 25px 90px rgba(0,0,0,.55) }
+    .card.active{ outline: 2px solid rgba(120,190,255,.55); box-shadow: 0 0 0 6px rgba(90,160,255,.12), 0 25px 90px rgba(0,0,0,.55) }
+    .img{height:210px; background:#000; position:relative}
+    .img img{width:100%; height:100%; object-fit:cover; display:block; filter: saturate(1.05) contrast(1.02) }
+    .label{
+      position:absolute; top:14px; left:14px;
+      background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.15);
+      padding:6px 10px; border-radius:999px; font-size:13px;
+    }
+    .content{padding:16px 18px 18px}
+    .title{font-size:22px; font-weight:800}
+    .desc{color:var(--muted); margin-top:4px}
+    .panel{
+      margin-top:18px;
+      background: rgba(8,16,33,.55);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:16px;
+    }
+    .row{display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap}
+    .state{display:flex; gap:10px; align-items:center; font-weight:700}
+    .state small{font-weight:600; color:var(--muted)}
+    .chat{
+      margin-top:14px;
+      height:260px;
+      overflow:auto;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:12px;
+      background: rgba(2,6,23,.55);
+    }
+    .msg{margin:10px 0; padding:10px 12px; border-radius:12px; max-width: 900px}
+    .me{background: rgba(99,102,241,.16); border:1px solid rgba(99,102,241,.25)}
+    .ai{background: rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.20)}
+    .meta{color:var(--muted); font-size:12px; margin-bottom:6px}
+    .inputrow{display:flex; gap:10px; margin-top:12px}
+    input{
+      flex:1; padding:12px 12px;
+      border-radius:12px; border:1px solid rgba(255,255,255,.12);
+      background: rgba(2,6,23,.55); color:var(--text);
+      outline:none;
+    }
+    button{
+      padding:12px 14px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.07);
+      color: var(--text);
+      cursor:pointer;
+    }
+    button:hover{border-color: rgba(120,190,255,.35)}
+    .hint{color:var(--muted); font-size:12px; margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AIVIO – AI ügynök demó</h1>
+    <div class="sub">
+      Kattints egy robotkártyára: Ari bemutatkozik (hang + chat), utána automatikusan hallgat, válaszol, és újra hallgat.
+      <br/>Tipp: ha a böngésző rákérdez a mikrofonra, engedélyezd. (Chrome-ban a legstabilabb.)
+    </div>
+
+    <div class="toprow">
+      <div class="pill"><span id="dot" class="dot"></span><b id="status">IDLE</b><span id="rev" style="margin-left:10px"></span></div>
+      <div class="pill">Voice: <b>Ari</b> (7B7mSWflzRSaO1yGeJH6)</div>
+      <div class="pill">Backend: <span id="backend">checking…</span></div>
+    </div>
+
+    <div class="grid" id="cards">
+      <div class="card" data-robot="outbound_sales">
+        <div class="img"><img src="/img/outbound.jpg" alt=""><span class="label">Adél</span></div>
+        <div class="content">
+          <div class="title">Kimenő telefonos sales</div>
+          <div class="desc">Telefonos értékesítés</div>
+        </div>
+      </div>
+
+      <div class="card" data-robot="email_sales">
+        <div class="img"><img src="/img/email.jpg" alt=""><span class="label">Ricsi</span></div>
+        <div class="content">
+          <div class="title">Email sales</div>
+          <div class="desc">Email kampányok</div>
+        </div>
+      </div>
+
+      <div class="card" data-robot="support_inbound">
+        <div class="img"><img src="/img/support.jpg" alt=""><span class="label">Ari</span></div>
+        <div class="content">
+          <div class="title">Bejövő ügyfélszolgálat</div>
+          <div class="desc">Telefonos támogatás</div>
+        </div>
+      </div>
+
+      <div class="card" data-robot="data_callback">
+        <div class="img"><img src="/img/data.jpg" alt=""><span class="label">Mihály</span></div>
+        <div class="content">
+          <div class="title">Adatbekérő robot</div>
+          <div class="desc">Visszahívással</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <div class="state">
+          <span>Aktív robot:</span>
+          <b id="activeRobot">nincs</b>
+          <small id="activeKey"></small>
+        </div>
+        <div class="state">
+          <small>State:</small> <b id="loopState">IDLE</b>
+        </div>
+      </div>
+
+      <div class="chat" id="chat"></div>
+
+      <div class="inputrow">
+        <input id="textInput" placeholder="Írj ide (fallback), Enter = küldés" />
+        <button id="sendBtn">Küld</button>
+        <button id="stopBtn">Stop</button>
+      </div>
+      <div class="hint">ESC nincs bekötve — Stop gombbal állítsd le a loopot.</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari (ElevenLabs)
+  const TTS_MODEL = "eleven_flash_v2_5";
+
+  const el = (id) => document.getElementById(id);
+  const chatEl = el("chat");
+  const statusEl = el("status");
+  const loopStateEl = el("loopState");
+  const dotEl = el("dot");
+  const revEl = el("rev");
+  const backendEl = el("backend");
+  const activeRobotEl = el("activeRobot");
+  const activeKeyEl = el("activeKey");
+
+  let activeRobotKey = null;
+  let activeRobotTitle = null;
+  let running = false;
+  let busy = false;
+  let history = []; // {role:"user"/"assistant", content:"..."}
+
+  function setStatus(kind, text) {
+    statusEl.textContent = text;
+    if (kind === "err") dotEl.classList.add("err"); else dotEl.classList.remove("err");
+  }
+  function setLoopState(s){ loopStateEl.textContent = s; }
+
+  function addMsg(who, text, meta="") {
+    const div = document.createElement("div");
+    div.className = "msg " + (who === "me" ? "me" : "ai");
+    div.innerHTML = `<div class="meta">${meta}</div>${escapeHtml(text)}`;
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  function escapeHtml(s){
+    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+  }
+
+  async function apiJSON(url, body){
+    const r = await fetch(url, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    if(!r.ok){
+      const t = await r.text().catch(()=> "");
+      throw new Error(`${url} ${r.status} ${t}`);
+    }
+    return r.json();
+  }
+
+  async function ttsSpeak(text){
+    setLoopState("SPEAKING");
+    const r = await fetch("/speak", {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ text, voiceId: VOICE_ID, model_id: TTS_MODEL })
+    });
+    if(!r.ok){
+      const t = await r.text().catch(()=> "");
+      throw new Error(`/speak ${r.status} ${t}`);
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    await new Promise((resolve, reject) => {
+      audio.onended = resolve;
+      audio.onerror = reject;
+      audio.play().catch(reject);
+    });
+    URL.revokeObjectURL(url);
+  }
+
+  // ===== STT (Web Speech API) =====
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+
+  function ensureRec(){
+    if(!SpeechRecognition) return null;
+    if(rec) return rec;
+    rec = new SpeechRecognition();
+    rec.lang = "hu-HU";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    return rec;
+  }
+
+  async function listenOnce(){
+    const r = ensureRec();
+    if(!r) throw new Error("A böngésző nem támogatja a SpeechRecognition-t (Web Speech API). Próbáld Chrome-ban.");
+
+    setLoopState("LISTENING");
+
+    return new Promise((resolve, reject) => {
+      let done = false;
+
+      r.onresult = (ev) => {
+        if(done) return;
+        done = true;
+        const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
+        resolve(text);
+      };
+      r.onerror = (e) => {
+        if(done) return;
+        done = true;
+        reject(new Error("STT error: " + (e.error || "unknown")));
+      };
+      r.onend = () => {
+        // ha end van, de nem jött result, az gyakran csend
+        if(done) return;
+        done = true;
+        resolve("");
+      };
+
+      try { r.start(); } catch(err){ reject(err); }
+    });
+  }
+
+  async function think(text){
+    setLoopState("THINKING");
+    const data = await apiJSON("/think", { text, robot: activeRobotKey, history });
+    return data.text || "";
+  }
+
+  // ====== LOOP ======
+  async function loop(){
+    if(!running || busy) return;
+    busy = true;
+
+    try {
+      // 1) hallgat
+      const heard = await listenOnce();
+      if(!running){ busy=false; return; }
+
+      if(!heard){
+        // csend → hallgasson tovább
+        busy = false;
+        setTimeout(loop, 200);
+        return;
+      }
+
+      addMsg("me", heard, "Te");
+      history.push({ role:"user", content: heard });
+
+      // 2) gondolkodik
+      const answer = await think(heard);
+      if(!running){ busy=false; return; }
+
+      // 3) válasz
+      addMsg("ai", answer, activeRobotTitle || "Ari");
+      history.push({ role:"assistant", content: answer });
+
+      // 4) beszél
+      await ttsSpeak(answer);
+
+      // 5) újra
+      busy = false;
+      setTimeout(loop, 150);
+
+    } catch(err){
+      console.error(err);
+      setStatus("err", "ERROR");
+      setLoopState("ERROR");
+      addMsg("ai", (err && err.message) ? err.message : String(err), "Hiba");
+      busy = false;
+      running = false;
+    }
+  }
+
+  async function startForRobot(robotKey, robotTitle, intro){
+    // UI highlight
+    document.querySelectorAll(".card").forEach(c => c.classList.toggle("active", c.dataset.robot === robotKey));
+
+    activeRobotKey = robotKey;
+    activeRobotTitle = robotTitle;
+
+    activeRobotEl.textContent = robotTitle;
+    activeKeyEl.textContent = `(${robotKey})`;
+
+    setStatus("ok", "RUNNING");
+    running = true;
+    busy = false;
+
+    // intro chat + hang
+    addMsg("ai", intro, robotTitle);
+    history = [{ role:"assistant", content: intro }];
+
+    try {
+      await ttsSpeak(intro);
+    } catch(err){
+      console.error(err);
+      addMsg("ai", "Nem tudok beszélni (TTS hiba). Nézd a logot.", "Hiba");
+      running = false;
+      setStatus("err", "ERROR");
+      setLoopState("ERROR");
+      return;
+    }
+
+    // indul a loop
+    busy = false;
+    loop();
+  }
+
+  // fallback: kézi küldés (nem vár chatre, csak segéd)
+  async function sendText(){
+    const v = el("textInput").value.trim();
+    if(!v) return;
+    el("textInput").value = "";
+    if(!activeRobotKey){
+      addMsg("ai", "Válassz előbb egy robotot a kártyákra kattintva.", "AIVIO");
+      return;
+    }
+    addMsg("me", v, "Te");
+    history.push({ role:"user", content: v });
+
+    try{
+      const answer = await think(v);
+      addMsg("ai", answer, activeRobotTitle || "Ari");
+      history.push({ role:"assistant", content: answer });
+      await ttsSpeak(answer);
+    }catch(err){
+      addMsg("ai", err.message || String(err), "Hiba");
+    }
+  }
+
+  function stopAll(){
+    running = false;
+    busy = false;
+    setLoopState("IDLE");
+    setStatus("ok", "IDLE");
+    try { if(rec) rec.abort(); } catch(e){}
+  }
+
+  // init: health + robots
+  (async () => {
+    try{
+      const h = await fetch("/health").then(r=>r.json());
+      revEl.textContent = `REV: ${h.rev || "?"}`;
+      backendEl.textContent = h.ok ? "OK" : "?"
+    }catch(e){
+      backendEl.textContent = "n/a";
+    }
+
+    try{
+      const data = await fetch("/robots").then(r=>r.json());
+      // a kártyák fixek, de a backend lista validálja
+      // ha akarod később innen generáljuk a kártyákat is
+    }catch(e){}
+  })();
+
+  // card click
+  document.getElementById("cards").addEventListener("click", async (e) => {
+    const card = e.target.closest(".card");
+    if(!card) return;
+    const key = card.dataset.robot;
+
+    // kérjünk robot intro-t a backendből (a rendszer prompt központi legyen)
+    try{
+      const data = await fetch("/robots").then(r=>r.json());
+      const item = (data.robots || []).find(x => x.key === key);
+      const title = item?.title || key;
+      const intro = item?.intro || "Szia! Ari vagyok.";
+      stopAll();
+      await startForRobot(key, title, intro);
+    }catch(err){
+      addMsg("ai", "Nem érem el a /robots endpointot.", "Hiba");
+    }
+  });
+
+  el("sendBtn").addEventListener("click", sendText);
+  el("textInput").addEventListener("keydown", (e)=> { if(e.key==="Enter") sendText(); });
+  el("stopBtn").addEventListener("click", stopAll);
+
+  setStatus("ok", "IDLE");
+  setLoopState("IDLE");
+})();
+</script>
+</body>
+</html>
