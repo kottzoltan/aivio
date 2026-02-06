@@ -1,117 +1,184 @@
-const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari
+// ==============================
+// AIVIO – DEMO.JS (STABIL LOOP)
+// ==============================
+
+// ------------------------------
+// GLOBÁLIS ÁLLAPOT
+// ------------------------------
+let recognition;
+let isListening = false;
 let currentRobot = null;
-let mediaRecorder;
-let audioChunks = [];
-let isRunning = false;
+let voiceId = "7B7mSWflzRSaO1yGeJH6"; // Ari
+let backendBase = ""; // same origin
 
-const stateEl = document.getElementById("state");
-const logEl = document.getElementById("log");
+// ------------------------------
+// INIT – SPEECH RECOGNITION
+// ------------------------------
+function initSpeechRecognition() {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function log(msg) {
-  console.log(msg);
-  logEl.textContent += msg + "\n";
+  if (!SpeechRecognition) {
+    alert("A böngésző nem támogatja a SpeechRecognition-t (Chrome ajánlott)");
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "hu-HU";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    console.log("🎧 recognition started");
+  };
+
+  recognition.onresult = async (event) => {
+    const text = event.results[0][0].transcript.trim();
+    console.log("🗣️ User said:", text);
+
+    isListening = false;
+
+    if (!text) {
+      safeRestartListening();
+      return;
+    }
+
+    await handleUserText(text);
+  };
+
+  recognition.onerror = (e) => {
+    console.warn("🎧 recognition error:", e.error);
+    isListening = false;
+    safeRestartListening();
+  };
+
+  recognition.onend = () => {
+    console.log("🎧 recognition ended");
+    isListening = false;
+    safeRestartListening();
+  };
 }
 
-function setState(text, cls = "") {
-  stateEl.textContent = text;
-  stateEl.className = cls;
+// ------------------------------
+// BIZTONSÁGOS HALLGATÁS INDÍTÁS
+// ------------------------------
+function listenLoop() {
+  if (!recognition) return;
+
+  if (isListening) {
+    console.log("🎧 listenLoop: már fut, skip");
+    return;
+  }
+
+  try {
+    isListening = true;
+    console.log("🎧 listenLoop: start");
+    recognition.start();
+  } catch (err) {
+    console.warn("🎧 listenLoop exception:", err);
+    isListening = false;
+  }
 }
 
-async function startRobot(robot) {
-  if (isRunning) return;
-  isRunning = true;
-  currentRobot = robot;
-  logEl.textContent = "";
+function safeRestartListening() {
+  setTimeout(() => {
+    listenLoop();
+  }, 400);
+}
 
-  log(`▶ Robot indítva: ${robot}`);
+// ------------------------------
+// USER TEXT → THINK → SPEAK
+// ------------------------------
+async function handleUserText(text) {
+  try {
+    setStatus("THINKING");
 
-  await speak(
-    "Szia! Ari vagyok. Figyelek, mondd nyugodtan, miben segíthetek."
-  );
+    const thinkRes = await fetch(`${backendBase}/think`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        robot: currentRobot
+      })
+    });
 
+    const thinkData = await thinkRes.json();
+    if (!thinkData.text) throw new Error("Empty think response");
+
+    await speak(thinkData.text);
+  } catch (err) {
+    console.error("❌ handleUserText error:", err);
+    safeRestartListening();
+  }
+}
+
+// ------------------------------
+// TTS – ELEVENLABS
+// ------------------------------
+async function speak(text) {
+  try {
+    setStatus("SPEAKING");
+
+    const res = await fetch(`${backendBase}/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        voiceId
+      })
+    });
+
+    const audioBlob = await res.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+
+    const audio = new Audio(audioUrl);
+    audio.onended = () => {
+      console.log("🔊 speech ended");
+      setStatus("LISTENING");
+      safeRestartListening();
+    };
+
+    audio.play();
+  } catch (err) {
+    console.error("❌ speak error:", err);
+    safeRestartListening();
+  }
+}
+
+// ------------------------------
+// ROBOT VÁLTÁS
+// ------------------------------
+function startRobot(robotKey) {
+  console.log("🤖 robot selected:", robotKey);
+  currentRobot = robotKey;
+
+  setStatus("LISTENING");
   listenLoop();
 }
 
-async function listenLoop() {
-  setState("LISTENING", "listening");
-  log("🎤 Hallgatás indul");
+// ------------------------------
+// UI STATUS (OPCIONÁLIS)
+// ------------------------------
+function setStatus(state) {
+  console.log("📡 STATE:", state);
+  const el = document.getElementById("state");
+  if (el) el.innerText = state;
+}
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  audioChunks = [];
+// ------------------------------
+// INIT
+// ------------------------------
+window.addEventListener("DOMContentLoaded", () => {
+  initSpeechRecognition();
 
-  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-
-  mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-
-    setState("THINKING", "thinking");
-    log("🧠 Feldolgozás...");
-
-    const text = await stt(audioBlob);
-    if (!text || text.trim().length < 2) {
-      log("⚠ Nem érthető válasz");
-      return listenLoop();
+  // fallback: ESC mindent leállít
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      try {
+        recognition.abort();
+      } catch {}
+      isListening = false;
+      console.log("⛔ ESC – stop");
     }
-
-    log(`👤 Felhasználó: ${text}`);
-
-    const answer = await think(text);
-    log(`🤖 Ari: ${answer}`);
-
-    await speak(answer);
-
-    listenLoop();
-  };
-
-  mediaRecorder.start();
-  setTimeout(() => mediaRecorder.stop(), 4000);
-}
-
-async function stt(blob) {
-  const fd = new FormData();
-  fd.append("audio", blob);
-
-  const r = await fetch("/listen", {
-    method: "POST",
-    body: fd
   });
-
-  const j = await r.json();
-  return j.text;
-}
-
-async function think(text) {
-  const r = await fetch("/think", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text,
-      robot: currentRobot
-    })
-  });
-
-  const j = await r.json();
-  return j.text;
-}
-
-async function speak(text) {
-  setState("SPEAKING", "speaking");
-
-  const r = await fetch("/speak", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text,
-      voiceId: VOICE_ID
-    })
-  });
-
-  const audioData = await r.arrayBuffer();
-  const audio = new Audio(URL.createObjectURL(new Blob([audioData])));
-  await audio.play();
-
-  return new Promise(res => {
-    audio.onended = res;
-  });
-}
+});
