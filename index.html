@@ -7,19 +7,24 @@
 
   <style>
     body {
-      background: #0b1220;
-      color: white;
-      font-family: system-ui, -apple-system;
+      margin: 0;
+      background: linear-gradient(180deg, #0b1220, #060a14);
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
       text-align: center;
-      padding: 40px;
     }
 
     #ari {
-      width: 260px;
-      border-radius: 16px;
+      width: 280px;
+      border-radius: 18px;
       cursor: pointer;
-      box-shadow: 0 0 40px rgba(0,150,255,.4);
-      transition: transform .2s;
+      box-shadow: 0 0 50px rgba(0,140,255,.35);
+      transition: transform .15s ease;
     }
 
     #ari:active {
@@ -28,110 +33,116 @@
 
     #state {
       margin-top: 20px;
-      opacity: 0.8;
       font-size: 14px;
+      opacity: 0.75;
     }
   </style>
 </head>
 <body>
 
 <h1>Ari</h1>
-<p>Kattints rám és beszélj.</p>
+<p>Kattints rám, beszélj – azonnal válaszolok.</p>
 
 <img id="ari" src="ari.png" alt="Ari" />
 
 <div id="state">Állapot: várakozás</div>
 
 <script>
-let mediaRecorder;
-let audioChunks = [];
-let isListening = false;
-
+const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari
 const STATE = document.getElementById("state");
-const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari hang
 
-function setState(text) {
-  STATE.innerText = "Állapot: " + text;
+let recorder;
+let chunks = [];
+let listening = false;
+
+function setState(t) {
+  STATE.innerText = "Állapot: " + t;
 }
 
-// --------- LISTEN (Whisper)
-async function startListening() {
-  if (isListening) return;
-  isListening = true;
-
-  setState("hallgat");
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  audioChunks = [];
-
-  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-
-  mediaRecorder.onstop = async () => {
-    isListening = false;
-    setState("gondolkodik");
-
-    const blob = new Blob(audioChunks, { type: "audio/webm" });
-    const form = new FormData();
-    form.append("audio", blob);
-
-    // STT
-    const stt = await fetch("/listen", {
-      method: "POST",
-      body: form
-    }).then(r => r.json());
-
-    if (!stt.text) {
-      setState("nem értette, újra hallgat");
-      return startListening();
-    }
-
-    // THINK
-    const think = await fetch("/think", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: stt.text,
-        robot: "outbound_sales"
-      })
-    }).then(r => r.json());
-
-    if (!think.text) {
-      setState("nem tud válaszolni");
-      return;
-    }
-
-    // SPEAK
-    speak(think.text);
-  };
-
-  mediaRecorder.start();
-
-  // 5 mp beszédablak (később VAD-ra cserélhető)
-  setTimeout(() => {
-    if (mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-    }
-  }, 5000);
-}
-
-// --------- SPEAK (ElevenLabs)
+// --------------------
+// SPEAK
+// --------------------
 function speak(text) {
   setState("beszél");
 
-  const audio = new Audio();
-  audio.src = `/speak?voiceId=${VOICE_ID}&text=${encodeURIComponent(text)}`;
+  const audio = new Audio(
+    `/speak?voiceId=${VOICE_ID}&text=${encodeURIComponent(text)}`
+  );
+
   audio.play();
 
   audio.onended = () => {
-    setState("válaszolt, újra hallgat");
     startListening();
   };
 }
 
-// --------- START (user gesture!)
+// --------------------
+// LISTEN → THINK → SPEAK
+// --------------------
+async function startListening() {
+  if (listening) return;
+  listening = true;
+
+  setState("hallgat");
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recorder = new MediaRecorder(stream);
+  chunks = [];
+
+  recorder.ondataavailable = e => chunks.push(e.data);
+
+  recorder.onstop = async () => {
+    listening = false;
+    setState("gondolkodik");
+
+    const blob = new Blob(chunks, { type: "audio/webm" });
+    const form = new FormData();
+    form.append("audio", blob);
+
+    // 1️⃣ STT
+    const sttRes = await fetch("/listen", {
+      method: "POST",
+      body: form
+    }).then(r => r.json());
+
+    if (!sttRes.text || sttRes.text.trim().length < 2) {
+      return startListening();
+    }
+
+    // 2️⃣ THINK (EZ A LÉNYEG)
+    const thinkRes = await fetch("/think", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: sttRes.text,
+        robot: "support_inbound"
+      })
+    }).then(r => r.json());
+
+    if (!thinkRes.text) {
+      speak("Ezt most nem teljesen értettem. Megpróbálnád újra?");
+      return;
+    }
+
+    // 3️⃣ SPEAK – CSAK A GPT VÁLASZA
+    speak(thinkRes.text);
+  };
+
+  recorder.start();
+
+  // ideiglenes: 5 mp beszédablak
+  setTimeout(() => {
+    if (recorder.state === "recording") recorder.stop();
+  }, 5000);
+}
+
+// --------------------
+// START (user gesture)
+// --------------------
 document.getElementById("ari").onclick = () => {
-  speak("Szia, Ari vagyok. Mondj pár szót, és azonnal reagálok.");
+  speak(
+    "Szia! Ari vagyok, az ügyfélszolgálati asszisztensed. Mondd el röviden, miben segíthetek."
+  );
 };
 </script>
 
