@@ -2,6 +2,10 @@ import express from "express";
 import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
+import http from "http";
+import { WebSocketServer } from "ws";
+
+import { createCallSession, getCallSession, closeCallSession, sweepOldCalls } from "./telephony/calls.js";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -10,7 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ====== REV / BUILD ID (hogy lásd, mi fut kint) ======
-const REV = process.env.REV || "rev_2026-02-06__aivio_loop_v1";
+const REV = process.env.REV || "rev_2026-02-07__aivio_ws_phone_scaffold_v1";
 
 // ====== middleware ======
 app.use(express.json({ limit: "2mb" }));
@@ -105,13 +109,11 @@ app.post("/think", async (req, res) => {
     if (!cfg) return res.status(400).json({ error: "Unknown robot" });
 
     if (!process.env.OPENAI_API_KEY) {
-      // fontos: ettől még a container nem hal meg
       return res.status(500).json({ error: "OPENAI_API_KEY missing" });
     }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    // rövid, kontrollált history (ne nőjön végtelenre)
     const trimmed = Array.isArray(history) ? history.slice(-10) : [];
 
     const messages = [
@@ -128,7 +130,6 @@ app.post("/think", async (req, res) => {
 
     const answer = completion?.choices?.[0]?.message?.content?.trim() || "";
     res.json({ text: answer });
-
   } catch (err) {
     console.error("THINK ERROR:", err);
     res.status(500).json({ error: "Thinking failed" });
@@ -146,25 +147,19 @@ app.post("/speak", async (req, res) => {
       return res.status(500).send("ELEVENLABS_API_KEY missing");
     }
 
-    const r = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVENLABS_API_KEY,
-          "Content-Type": "application/json",
-          "Accept": "audio/mpeg"
-        },
-        body: JSON.stringify({
-          text,
-          model_id: model_id || "eleven_flash_v2_5", // Ari-hoz gyors+jó
-          voice_settings: {
-            stability: 0.45,
-            similarity_boost: 0.85
-          }
-        })
-      }
-    );
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+      },
+      body: JSON.stringify({
+        text,
+        model_id: model_id || "eleven_flash_v2_5",
+        voice_settings: { stability: 0.45, similarity_boost: 0.85 }
+      })
+    });
 
     if (!r.ok) {
       const t = await r.text();
@@ -175,7 +170,6 @@ app.post("/speak", async (req, res) => {
     const audioBuffer = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
     res.send(audioBuffer);
-
   } catch (err) {
     console.error("SPEAK ERROR:", err);
     res.status(500).send("TTS error");
@@ -192,6 +186,114 @@ app.get("/robots", (req, res) => {
   res.json({ rev: REV, robots: list });
 });
 
-app.listen(PORT, () => {
+
+// =====================================================
+// 📞 TELEFONOS CSATORNA – scaffolding
+// =====================================================
+
+// 1) Call session start (Asterisk / bridge ezt fogja hívni)
+app.post("/call/start", (req, res) => {
+  const { callId } = req.body || {};
+  if (!callId) return res.status(400).json({ error: "Missing callId" });
+
+  // default: minden bejövő hívás -> support_inbound
+  const s = createCallSession(callId, "support_inbound");
+
+  console.log("📞 CALL START:", callId, "robot:", s.robot);
+  res.json({ ok: true, rev: REV, callId, robot: s.robot });
+});
+
+// 2) Call session end
+app.post("/call/end", (req, res) => {
+  const { callId } = req.body || {};
+  if (!callId) return res.status(400).json({ error: "Missing callId" });
+
+  closeCallSession(callId);
+  console.log("📞 CALL END:", callId);
+  res.json({ ok: true });
+});
+
+// 3) Debug: list active calls
+app.get("/call/active", (req, res) => {
+  // csak demo/debug, ne legyen élesben nyitva netre auth nélkül
+  const active = [];
+  // lazy sweep
+  sweepOldCalls(30 * 60 * 1000);
+
+  // CALLS Map a module-ban van, itt getCallSession nélkül nem látjuk,
+  // ezért: egyszerűen visszaadunk üres listát, ha nem akarod kiexportálni.
+  // (ha kéred, adok egy rendes listázót is)
+  res.json({ ok: true, note: "Enable listing if needed", active });
+});
+
+
+// =====================================================
+// 🎧 WebSocket – audio bejövő csatorna
+// path: /ws/audio
+//
+// Protokoll (most demo):
+// - első üzenet: JSON { type:"hello", callId:"..." }
+// - utána audio frame-ek jöhetnek binárisan (később: PCM 16k/16bit mono)
+// =====================================================
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: "/ws/audio" });
+
+wss.on("connection", (ws) => {
+  let callId = null;
+
+  ws.on("message", async (data, isBinary) => {
+    try {
+      if (!isBinary) {
+        const msg = JSON.parse(data.toString("utf8"));
+
+        if (msg.type === "hello") {
+          callId = String(msg.callId || "");
+          if (!callId) {
+            ws.send(JSON.stringify({ type: "error", message: "Missing callId in hello" }));
+            ws.close();
+            return;
+          }
+
+          const s = getCallSession(callId) || createCallSession(callId, "support_inbound");
+          ws.send(JSON.stringify({ type: "hello_ack", callId: s.callId, robot: s.robot, rev: REV }));
+          console.log("🎧 WS hello:", callId, "robot:", s.robot);
+          return;
+        }
+
+        if (msg.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong", t: Date.now() }));
+          return;
+        }
+
+        ws.send(JSON.stringify({ type: "error", message: "Unknown message type" }));
+        return;
+      }
+
+      // Binary audio frame (még nem dolgozzuk fel, csak logoljuk)
+      if (!callId) {
+        ws.send(JSON.stringify({ type: "error", message: "Send hello first" }));
+        return;
+      }
+
+      // Itt fog majd menni:
+      // - PCM chunk -> realtime STT -> /think -> TTS -> vissza bridge-nek
+      // Most csak méretet logolunk, hogy lásd él a pipeline.
+      console.log("🎧 WS audio chunk:", callId, "bytes:", data.length);
+
+    } catch (err) {
+      console.error("WS message error:", err);
+      try {
+        ws.send(JSON.stringify({ type: "error", message: "Bad message" }));
+      } catch {}
+    }
+  });
+
+  ws.on("close", () => {
+    if (callId) console.log("🎧 WS closed:", callId);
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
 });
