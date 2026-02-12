@@ -304,3 +304,125 @@ app.get("/api/crm/leads", async (req, res) => {
     res.status(500).json({ error: "CRM list error" });
   }
 });
+// =====================================================
+// CRM STAGES LIST
+// =====================================================
+
+app.get("/api/crm/stages", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+
+    const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "call",
+        params: {
+          service: "object",
+          method: "execute_kw",
+          args: [
+            process.env.ODOO_DB,
+            uid,
+            process.env.ODOO_API_KEY,
+            "crm.stage",
+            "search_read",
+            [[]],
+            { fields: ["id", "name"] }
+          ]
+        },
+        id: Date.now()
+      })
+    });
+
+    const data = await r.json();
+    res.json(data.result);
+
+  } catch (err) {
+    console.error("STAGE ERROR:", err);
+    res.status(500).json({ error: "Stage load error" });
+  }
+});
+// =====================================================
+// UPDATE LEAD STAGE
+// =====================================================
+
+app.post("/api/crm/update-stage", async (req, res) => {
+  try {
+    const { leadId, stageId } = req.body;
+
+    const uid = await odooLogin();
+
+    const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "call",
+        params: {
+          service: "object",
+          method: "execute_kw",
+          args: [
+            process.env.ODOO_DB,
+            uid,
+            process.env.ODOO_API_KEY,
+            "crm.lead",
+            "write",
+            [[leadId], { stage_id: stageId }]
+          ]
+        },
+        id: Date.now()
+      })
+    });
+
+    const data = await r.json();
+    res.json({ success: data.result });
+
+  } catch (err) {
+    console.error("UPDATE STAGE ERROR:", err);
+    res.status(500).json({ error: "Stage update error" });
+  }
+});
+// =====================================================
+// ADD NOTE TO LEAD
+// =====================================================
+
+app.post("/api/crm/add-note", async (req, res) => {
+  try {
+    const { leadId, message } = req.body;
+    const uid = await odooLogin();
+
+    const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "call",
+        params: {
+          service: "object",
+          method: "execute_kw",
+          args: [
+            process.env.ODOO_DB,
+            uid,
+            process.env.ODOO_API_KEY,
+            "mail.message",
+            "create",
+            [{
+              model: "crm.lead",
+              res_id: leadId,
+              body: message
+            }]
+          ]
+        },
+        id: Date.now()
+      })
+    });
+
+    const data = await r.json();
+    res.json({ success: !!data.result });
+
+  } catch (err) {
+    console.error("NOTE ERROR:", err);
+    res.status(500).json({ error: "Note error" });
+  }
+});
