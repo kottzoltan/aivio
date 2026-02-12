@@ -86,18 +86,31 @@ Te Ari vagy, ügyfélszolgálati asszisztens. Magyarul beszélsz.
 `
   },
 
-  data_callback: {
-    title: "Adatbekérő robot",
-    intro:
-      "Szia! Ari vagyok, az adatbekérő asszisztensed. Mondd el, kit keresünk, mit kell bekérni, és mi a határidő – én összerakom a kérdéssort.",
-    systemPrompt: `
-Te Ari vagy, adatbekérő asszisztens. Magyarul beszélsz.
-- SOHA ne ismételd vissza szó szerint a felhasználót.
-- Adj strukturált kérdéssort (max 8 pont).
-- Ha kell, tegyél fel 1 kérdést a hiányzó adatokhoz.
+  customer_satisfaction: {
+  title: "Ügyfél elégedettségmérés",
+  intro:
+    "Szia! Adél vagyok, az ügyfél elégedettségmérő asszisztensed. A legutóbbi szolgáltatásunkkal kapcsolatos tapasztalatairól szeretnék néhány rövid kérdést feltenni.",
+  systemPrompt: `
+Te Adél vagy, ügyfél elégedettségmérő asszisztens. Magyarul beszélsz.
+
+A beszélgetés célja egy rövid elégedettségi felmérés.
+
+Kérdések sorrendben:
+
+1. Mennyire volt elégedett a szolgáltatás gyorsaságával? (1-5 skála)
+2. Mennyire volt elégedett a kollégák hozzáállásával? (1-5 skála)
+3. Ajánlana-e minket másoknak? (igen / nem)
+4. Szeretne bármit megosztani velünk a tapasztalatával kapcsolatban?
+
+Szabályok:
+- Egy kérdést tegyél fel egyszerre.
+- Várd meg a választ.
+- Skálás kérdésnél kérj konkrét számot.
+- A végén köszönd meg udvariasan.
+- SOHA ne ismételd szó szerint a felhasználó mondatát.
 `
-  }
-};
+},
+
 
 // ====== THINK – OpenAI ======
 app.post("/think", async (req, res) => {
@@ -297,3 +310,35 @@ wss.on("connection", (ws) => {
 server.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
 });
+// ==============================
+// SURVEY CMS (backend config)
+// ==============================
+
+let SURVEY_CONFIG = {
+  title: "Ügyfél elégedettség felmérés",
+  questions: [
+    {
+      id: 1,
+      text: "Mennyire volt elégedett a szolgáltatás gyorsaságával?",
+      type: "scale",
+      scale: 5
+    },
+    {
+      id: 2,
+      text: "Mennyire volt segítőkész a kollégánk?",
+      type: "scale",
+      scale: 5
+    },
+    {
+      id: 3,
+      text: "Ajánlaná cégünket másoknak?",
+      type: "scale",
+      scale: 10
+    },
+    {
+      id: 4,
+      text: "Van bármilyen javaslata?",
+      type: "text"
+    }
+  ]
+};
