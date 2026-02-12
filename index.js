@@ -2,16 +2,7 @@ import express from "express";
 import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
-import http from "http";
-import { WebSocketServer } from "ws";
 import fetch from "node-fetch";
-
-import {
-  createCallSession,
-  getCallSession,
-  closeCallSession,
-  sweepOldCalls
-} from "./telephony/calls.js";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -19,21 +10,22 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_2026-02-12__stable_build";
+const REV = "rev_2026-02-12__clean_stable_web_only";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/index.html"));
-});
+// =====================================================
+// HEALTH
+// =====================================================
 
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
     rev: REV,
     openai: !!process.env.OPENAI_API_KEY,
-    elevenlabs: !!process.env.ELEVENLABS_API_KEY
+    elevenlabs: !!process.env.ELEVENLABS_API_KEY,
+    time: new Date().toISOString()
   });
 });
 
@@ -44,36 +36,42 @@ app.get("/health", (req, res) => {
 const ROBOTS = {
   outbound_sales: {
     title: "Kimenő telefonos sales",
-    intro: "Szia! Ari vagyok, a kimenő sales asszisztensed.",
+    intro:
+      "Szia! Ari vagyok, a kimenő sales asszisztensed. Mondd el: kinek telefonálunk és mi a cél?",
     systemPrompt: `
-Te Ari vagy, kimenő sales asszisztens.
+Te Ari vagy, tapasztalt kimenő sales asszisztens.
 Rövid, határozott, udvarias válaszokat adj.
 Mindig tegyél fel 1 következő kérdést.
+Soha ne ismételd szó szerint a felhasználót.
 `
   },
 
   email_sales: {
     title: "Email sales",
-    intro: "Szia! Ari vagyok, az email sales asszisztensed.",
+    intro:
+      "Szia! Ari vagyok, az email sales asszisztensed. Mondd el a célcsoportot és a terméket.",
     systemPrompt: `
 Te Ari vagy, email sales szakértő.
 Adj kész emailt tárggyal és CTA-val.
+Ne ismételd szó szerint a felhasználót.
 `
   },
 
   support_inbound: {
     title: "Bejövő ügyfélszolgálat",
-    intro: "Szia! Ari vagyok, az ügyfélszolgálati asszisztensed.",
+    intro:
+      "Szia! Ari vagyok, az ügyfélszolgálati asszisztensed. Mondd el a problémát.",
     systemPrompt: `
 Te Ari vagy, ügyfélszolgálati asszisztens.
 Adj lépésről lépésre megoldást.
+Ne ismételd szó szerint a felhasználót.
 `
   },
 
   customer_satisfaction: {
     title: "Ügyfél elégedettségmérés",
     intro:
-      "Szia! Adél vagyok, az ügyfél elégedettségmérő asszisztensed. Szeretnék néhány rövid kérdést feltenni.",
+      "Szia! Adél vagyok, az ügyfél elégedettségmérő asszisztensed. Szeretnék néhány rövid kérdést feltenni a legutóbbi szolgáltatásunkkal kapcsolatban.",
     systemPrompt: `
 Te Adél vagy, ügyfél elégedettségmérő asszisztens.
 
@@ -84,11 +82,13 @@ Kérdések sorrendben:
 4. Van-e javaslata?
 
 Egy kérdést tegyél fel egyszerre.
-A végén köszönd meg.
+Várd meg a választ.
+A végén köszönd meg udvariasan.
 `
   }
 };
 
+// robots lista a frontendnek
 app.get("/robots", (req, res) => {
   const list = Object.entries(ROBOTS).map(([key, v]) => ({
     key,
@@ -99,7 +99,7 @@ app.get("/robots", (req, res) => {
 });
 
 // =====================================================
-// THINK
+// THINK (OpenAI)
 // =====================================================
 
 app.post("/think", async (req, res) => {
@@ -110,21 +110,26 @@ app.post("/think", async (req, res) => {
     const cfg = ROBOTS[robot];
     if (!cfg) return res.status(400).json({ error: "Unknown robot" });
 
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "OPENAI_API_KEY missing" });
+    }
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: process.env.OPENAI_MODEL || "gpt-4.1",
       messages: [
         { role: "system", content: cfg.systemPrompt },
-        ...history.slice(-10),
+        ...(Array.isArray(history) ? history.slice(-10) : []),
         { role: "user", content: text }
       ],
       temperature: 0.4
     });
 
-    res.json({
-      text: completion.choices[0].message.content.trim()
-    });
+    const answer =
+      completion?.choices?.[0]?.message?.content?.trim() || "";
+
+    res.json({ text: answer });
 
   } catch (err) {
     console.error("THINK ERROR:", err);
@@ -133,13 +138,18 @@ app.post("/think", async (req, res) => {
 });
 
 // =====================================================
-// SPEAK
+// SPEAK (ElevenLabs)
 // =====================================================
 
 app.post("/speak", async (req, res) => {
   try {
-    const { text, voiceId } = req.body || {};
-    if (!text || !voiceId) return res.status(400).send("Missing params");
+    const { text, voiceId, model_id } = req.body || {};
+    if (!text) return res.status(400).send("Missing text");
+    if (!voiceId) return res.status(400).send("Missing voiceId");
+
+    if (!process.env.ELEVENLABS_API_KEY) {
+      return res.status(500).send("ELEVENLABS_API_KEY missing");
+    }
 
     const r = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -152,7 +162,7 @@ app.post("/speak", async (req, res) => {
         },
         body: JSON.stringify({
           text,
-          model_id: "eleven_flash_v2_5"
+          model_id: model_id || "eleven_flash_v2_5"
         })
       }
     );
@@ -174,38 +184,9 @@ app.post("/speak", async (req, res) => {
 });
 
 // =====================================================
-// TELEFON SCAFFOLD (érintetlen)
+// START SERVER (Cloud Run kompatibilis)
 // =====================================================
 
-app.post("/call/start", (req, res) => {
-  const { callId } = req.body || {};
-  if (!callId) return res.status(400).json({ error: "Missing callId" });
-
-  const s = createCallSession(callId, "support_inbound");
-  res.json({ ok: true, callId: s.callId });
-});
-
-app.post("/call/end", (req, res) => {
-  const { callId } = req.body || {};
-  if (!callId) return res.status(400).json({ error: "Missing callId" });
-
-  closeCallSession(callId);
-  res.json({ ok: true });
-});
-
-// =====================================================
-// WS
-// =====================================================
-
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws/audio" });
-
-wss.on("connection", (ws) => {
-  ws.on("message", (data) => {
-    console.log("WS message:", data.length);
-  });
-});
-
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
 });
