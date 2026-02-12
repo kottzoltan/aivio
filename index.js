@@ -265,3 +265,42 @@ app.get("/crm/list", (req, res) => {
 app.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
 });
+app.get("/api/crm/leads", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+
+    const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "call",
+        params: {
+          service: "object",
+          method: "execute_kw",
+          args: [
+            process.env.ODOO_DB,
+            uid,
+            process.env.ODOO_API_KEY,
+            "crm.lead",
+            "search_read",
+            [[]],
+            {
+              fields: ["name", "email_from", "phone", "stage_id"],
+              limit: 50,
+              order: "create_date desc"
+            }
+          ]
+        },
+        id: Date.now()
+      })
+    });
+
+    const data = await r.json();
+    res.json(data.result);
+
+  } catch (err) {
+    console.error("CRM LIST ERROR:", err);
+    res.status(500).json({ error: "CRM list error" });
+  }
+});
