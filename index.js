@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_2026-02-12__robots_plus_crm_dashboard";
+const REV = "rev_full_orchestrated_2026_02_12";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -26,63 +26,43 @@ app.get("/health", (req, res) => {
     rev: REV,
     openai: !!process.env.OPENAI_API_KEY,
     elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-    odoo: !!process.env.ODOO_URL,
-    time: new Date().toISOString()
+    odoo: !!process.env.ODOO_URL
   });
 });
 
 //////////////////////////////////////////////////////////
-// ROBOTS (VÁLTOZATLAN)
+// ROBOTS (VÁLTOZATLAN LOGIKA)
 //////////////////////////////////////////////////////////
 
 const ROBOTS = {
   outbound_sales: {
-    title: "AI Sales Megoldás Értékesítő",
-    intro:
-      "Szia! Ari vagyok, AI sales megoldás szakértő. Egy olyan intelligens rendszert mutatok, amely automatizálja a sales, ügyfélszolgálati és ügyfél-elégedettségi folyamatait.",
+    title: "AI Sales Megoldás",
+    intro: "Szia! Ari vagyok, AI sales specialista.",
     systemPrompt: `
-Te Ari vagy, AI megoldás értékesítési specialista.
-
-1. Rövid bemutatás
-2. Érdeklődés felmérés
-3. Ha igen:
-   - név
-   - email
-   - telefon
-   - időpont (2 opció)
-4. Jelezd, hogy CRM-be rögzíted.
+AI sales megoldást mutatsz be.
+Kérj nevet, emailt, telefonszámot, javasolj időpontot.
 `
   },
   email_sales: {
-    title: "Időpont foglalás",
-    intro:
-      "Szia! Segítek teniszpályát foglalni.",
+    title: "Időpontfoglalás",
+    intro: "Segítek pályát foglalni.",
     systemPrompt: `
-Teniszpálya foglalás:
-- dátum
-- kezdési idő
-- hány órára
-- név
-- telefonszám
+Dátum, időpont, név, telefonszám.
 Egy kérdés egyszerre.
 `
   },
   support_inbound: {
-    title: "Bejövő ügyfélszolgálat",
-    intro:
-      "Szia! Ari vagyok, az ügyfélszolgálati asszisztensed.",
+    title: "Ügyfélszolgálat",
+    intro: "Segítek megoldani a problémát.",
     systemPrompt: `
-Adj lépésről lépésre megoldást.
+Lépésről lépésre segíts.
 `
   },
   customer_satisfaction: {
-    title: "Ügyfél elégedettségmérés",
-    intro:
-      "Szia! Néhány rövid kérdést tennék fel.",
+    title: "Elégedettségmérés",
+    intro: "Néhány rövid kérdés.",
     systemPrompt: `
 1-5 skálás kérdések.
-Egy kérdés egyszerre.
-A végén köszönd meg.
 `
   }
 };
@@ -93,11 +73,11 @@ app.get("/robots", (req, res) => {
     title: v.title,
     intro: v.intro
   }));
-  res.json({ rev: REV, robots: list });
+  res.json({ robots: list });
 });
 
 //////////////////////////////////////////////////////////
-// THINK
+// THINK (SÉRTHETETLEN BESZÉD + ORCHESTRATION)
 //////////////////////////////////////////////////////////
 
 app.post("/think", async (req, res) => {
@@ -120,9 +100,12 @@ app.post("/think", async (req, res) => {
       temperature: 0.4
     });
 
-    res.json({
-      text: completion.choices[0].message.content.trim()
-    });
+    const aiText = completion.choices[0].message.content.trim();
+
+    logConversation(robot, text, aiText);
+    await postProcess(robot, text);
+
+    res.json({ text: aiText });
 
   } catch (err) {
     console.error("THINK ERROR:", err);
@@ -131,12 +114,12 @@ app.post("/think", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////////
-// SPEAK
+// SPEAK (ÉRINTETLEN)
 //////////////////////////////////////////////////////////
 
 app.post("/speak", async (req, res) => {
   try {
-    const { text, voiceId, model_id } = req.body || {};
+    const { text, voiceId } = req.body;
     if (!text || !voiceId) return res.status(400).send("Missing data");
 
     const r = await fetch(
@@ -150,7 +133,7 @@ app.post("/speak", async (req, res) => {
         },
         body: JSON.stringify({
           text,
-          model_id: model_id || "eleven_flash_v2_5"
+          model_id: "eleven_flash_v2_5"
         })
       }
     );
@@ -166,31 +149,26 @@ app.post("/speak", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////////
-// SIMPLE LOCAL CRM (MARAD)
+// LOCAL CONVERSATION LOG
 //////////////////////////////////////////////////////////
 
 const DATA_DIR = path.join(__dirname, "data");
-const CRM_FILE = path.join(DATA_DIR, "crm.json");
+const CONV_FILE = path.join(DATA_DIR, "conversations.json");
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-if (!fs.existsSync(CRM_FILE)) fs.writeFileSync(CRM_FILE, JSON.stringify([]));
+if (!fs.existsSync(CONV_FILE)) fs.writeFileSync(CONV_FILE, JSON.stringify([]));
 
-app.post("/crm/save", (req, res) => {
-  const entry = {
+function logConversation(robot, userText, aiText) {
+  const data = JSON.parse(fs.readFileSync(CONV_FILE));
+  data.push({
     id: Date.now(),
-    ...req.body,
+    robot,
+    userText,
+    aiText,
     createdAt: new Date().toISOString()
-  };
-  const data = JSON.parse(fs.readFileSync(CRM_FILE));
-  data.push(entry);
-  fs.writeFileSync(CRM_FILE, JSON.stringify(data, null, 2));
-  res.json({ ok: true });
-});
-
-app.get("/crm/list", (req, res) => {
-  const data = JSON.parse(fs.readFileSync(CRM_FILE));
-  res.json(data);
-});
+  });
+  fs.writeFileSync(CONV_FILE, JSON.stringify(data, null, 2));
+}
 
 //////////////////////////////////////////////////////////
 // ODOO LOGIN
@@ -220,122 +198,137 @@ async function odooLogin() {
 }
 
 //////////////////////////////////////////////////////////
-// ODOO LEAD CREATE
+// ORCHESTRATION LAYER
 //////////////////////////////////////////////////////////
 
-app.post("/api/crm/create-lead", async (req, res) => {
-  try {
-    const uid = await odooLogin();
-    const { name, email, phone, note, expected_revenue = 0 } = req.body;
+function extractContact(text) {
+  const email = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i);
+  const phone = text.match(/\+?\d[\d\s\-]{7,}/);
+  return {
+    email: email ? email[0] : null,
+    phone: phone ? phone[0] : null
+  };
+}
 
-    const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "call",
-        params: {
-          service: "object",
-          method: "execute_kw",
-          args: [
-            process.env.ODOO_DB,
-            uid,
-            process.env.ODOO_API_KEY,
-            "crm.lead",
-            "create",
-            [{
-              name,
-              email_from: email,
-              phone,
-              description: note,
-              expected_revenue
-            }]
-          ]
-        },
-        id: Date.now()
-      })
-    });
-
-    const data = await r.json();
-    res.json({ success: true, leadId: data.result });
-
-  } catch (err) {
-    console.error("ODOO CREATE ERROR:", err);
-    res.status(500).json({ error: "Create lead failed" });
-  }
-});
-
-//////////////////////////////////////////////////////////
-// ODOO PIPELINE
-//////////////////////////////////////////////////////////
-
-app.get("/api/crm/pipeline", async (req, res) => {
+async function postProcess(robot, text) {
   try {
     const uid = await odooLogin();
 
-    const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "call",
-        params: {
-          service: "object",
-          method: "execute_kw",
-          args: [
-            process.env.ODOO_DB,
-            uid,
-            process.env.ODOO_API_KEY,
-            "crm.lead",
-            "search_read",
-            [[]],
-            {
-              fields: ["stage_id", "expected_revenue", "probability"],
-              limit: 1000
-            }
-          ]
-        },
-        id: Date.now()
-      })
-    });
+    if (robot === "outbound_sales") {
+      const contact = extractContact(text);
+      if (contact.email || contact.phone) {
 
-    const data = await r.json();
-    const leads = data.result || [];
+        await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "call",
+            params: {
+              service: "object",
+              method: "execute_kw",
+              args: [
+                process.env.ODOO_DB,
+                uid,
+                process.env.ODOO_API_KEY,
+                "crm.lead",
+                "create",
+                [{
+                  name: "AI Sales Lead",
+                  email_from: contact.email,
+                  phone: contact.phone,
+                  description: text
+                }]
+              ]
+            },
+            id: Date.now()
+          })
+        });
 
-    const byStage = {};
-
-    leads.forEach(l => {
-      const stage = l.stage_id?.[1] || "Ismeretlen";
-      if (!byStage[stage]) {
-        byStage[stage] = { count: 0, expected: 0, weighted: 0 };
+        await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "call",
+            params: {
+              service: "object",
+              method: "execute_kw",
+              args: [
+                process.env.ODOO_DB,
+                uid,
+                process.env.ODOO_API_KEY,
+                "calendar.event",
+                "create",
+                [{
+                  name: "AI Sales Meeting",
+                  description: text
+                }]
+              ]
+            },
+            id: Date.now()
+          })
+        });
       }
+    }
 
-      const expected = Number(l.expected_revenue || 0);
-      const prob = Number(l.probability || 0);
+    if (robot === "email_sales") {
+      await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            service: "object",
+            method: "execute_kw",
+            args: [
+              process.env.ODOO_DB,
+              uid,
+              process.env.ODOO_API_KEY,
+              "calendar.event",
+              "create",
+              [{
+                name: "AI Booking",
+                description: text
+              }]
+            ]
+          },
+          id: Date.now()
+        })
+      });
+    }
 
-      byStage[stage].count++;
-      byStage[stage].expected += expected;
-      byStage[stage].weighted += expected * (prob / 100);
-    });
-
-    const pipeline = Object.entries(byStage).map(([stage, val]) => ({
-      stage,
-      ...val
-    }));
-
-    const totals = pipeline.reduce((a, s) => ({
-      leads: a.leads + s.count,
-      expected: a.expected + s.expected,
-      weighted: a.weighted + s.weighted
-    }), { leads: 0, expected: 0, weighted: 0 });
-
-    res.json({ pipeline, totals });
+    if (robot === "customer_satisfaction") {
+      await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            service: "object",
+            method: "execute_kw",
+            args: [
+              process.env.ODOO_DB,
+              uid,
+              process.env.ODOO_API_KEY,
+              "survey.user_input",
+              "create",
+              [{
+                state: "done"
+              }]
+            ]
+          },
+          id: Date.now()
+        })
+      });
+    }
 
   } catch (err) {
-    console.error("PIPELINE ERROR:", err);
-    res.status(500).json({ error: "Pipeline error" });
+    console.error("POST PROCESS ERROR:", err);
   }
-});
+}
 
 //////////////////////////////////////////////////////////
 // START SERVER
