@@ -1,0 +1,11 @@
+<h2>CRM Lista</h2>
+<pre id="crm"></pre>
+
+<script>
+fetch("/crm/list")
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById("crm").innerText =
+      JSON.stringify(d, null, 2);
+  });
+</script>

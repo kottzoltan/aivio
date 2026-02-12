@@ -1,5 +1,5 @@
 // ==============================
-// AIVIO – DEMO.JS (STABIL LOOP)
+// AIVIO – DEMO.JS (STABIL LOOP + CRM)
 // ==============================
 
 // ------------------------------
@@ -28,14 +28,8 @@ function initSpeechRecognition() {
   recognition.continuous = false;
   recognition.interimResults = false;
 
-  recognition.onstart = () => {
-    console.log("🎧 recognition started");
-  };
-
   recognition.onresult = async (event) => {
     const text = event.results[0][0].transcript.trim();
-    console.log("🗣️ User said:", text);
-
     isListening = false;
 
     if (!text) {
@@ -46,36 +40,27 @@ function initSpeechRecognition() {
     await handleUserText(text);
   };
 
-  recognition.onerror = (e) => {
-    console.warn("🎧 recognition error:", e.error);
+  recognition.onerror = () => {
     isListening = false;
     safeRestartListening();
   };
 
   recognition.onend = () => {
-    console.log("🎧 recognition ended");
     isListening = false;
     safeRestartListening();
   };
 }
 
 // ------------------------------
-// BIZTONSÁGOS HALLGATÁS INDÍTÁS
+// HALLGATÁS INDÍTÁS
 // ------------------------------
 function listenLoop() {
-  if (!recognition) return;
-
-  if (isListening) {
-    console.log("🎧 listenLoop: már fut, skip");
-    return;
-  }
+  if (!recognition || isListening) return;
 
   try {
     isListening = true;
-    console.log("🎧 listenLoop: start");
     recognition.start();
-  } catch (err) {
-    console.warn("🎧 listenLoop exception:", err);
+  } catch {
     isListening = false;
   }
 }
@@ -105,7 +90,27 @@ async function handleUserText(text) {
     const thinkData = await thinkRes.json();
     if (!thinkData.text) throw new Error("Empty think response");
 
+    // ==============================
+    // 🎯 CRM MENTÉS (CSAK SALES)
+    // ==============================
+    if (currentRobot === "outbound_sales") {
+      try {
+        fetch(`${backendBase}/crm/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            robot: "outbound_sales",
+            name: "Web demo érdeklődő",
+            note: text
+          })
+        });
+      } catch (e) {
+        console.warn("CRM save failed:", e);
+      }
+    }
+
     await speak(thinkData.text);
+
   } catch (err) {
     console.error("❌ handleUserText error:", err);
     safeRestartListening();
@@ -133,12 +138,12 @@ async function speak(text) {
 
     const audio = new Audio(audioUrl);
     audio.onended = () => {
-      console.log("🔊 speech ended");
       setStatus("LISTENING");
       safeRestartListening();
     };
 
     audio.play();
+
   } catch (err) {
     console.error("❌ speak error:", err);
     safeRestartListening();
@@ -149,18 +154,15 @@ async function speak(text) {
 // ROBOT VÁLTÁS
 // ------------------------------
 function startRobot(robotKey) {
-  console.log("🤖 robot selected:", robotKey);
   currentRobot = robotKey;
-
   setStatus("LISTENING");
   listenLoop();
 }
 
 // ------------------------------
-// UI STATUS (OPCIONÁLIS)
+// UI STATE
 // ------------------------------
 function setStatus(state) {
-  console.log("📡 STATE:", state);
   const el = document.getElementById("state");
   if (el) el.innerText = state;
 }
@@ -171,14 +173,12 @@ function setStatus(state) {
 window.addEventListener("DOMContentLoaded", () => {
   initSpeechRecognition();
 
-  // fallback: ESC mindent leállít
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       try {
         recognition.abort();
       } catch {}
       isListening = false;
-      console.log("⛔ ESC – stop");
     }
   });
 });

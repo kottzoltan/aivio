@@ -186,6 +186,52 @@ app.post("/speak", async (req, res) => {
 // =====================================================
 // START SERVER (Cloud Run kompatibilis)
 // =====================================================
+// =====================================================
+// SIMPLE CRM (demo)
+// =====================================================
+
+import fs from "fs";
+
+const DATA_DIR = path.join(__dirname, "data");
+const CRM_FILE = path.join(DATA_DIR, "crm.json");
+
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR);
+}
+
+if (!fs.existsSync(CRM_FILE)) {
+  fs.writeFileSync(CRM_FILE, JSON.stringify([]));
+}
+
+// mentés
+app.post("/crm/save", (req, res) => {
+  try {
+    const entry = {
+      id: Date.now(),
+      robot: req.body.robot,
+      name: req.body.name || "Ismeretlen",
+      phone: req.body.phone || "",
+      email: req.body.email || "",
+      note: req.body.note || "",
+      createdAt: new Date().toISOString()
+    };
+
+    const data = JSON.parse(fs.readFileSync(CRM_FILE));
+    data.push(entry);
+    fs.writeFileSync(CRM_FILE, JSON.stringify(data, null, 2));
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("CRM ERROR:", err);
+    res.status(500).json({ error: "CRM save failed" });
+  }
+});
+
+// lista
+app.get("/crm/list", (req, res) => {
+  const data = JSON.parse(fs.readFileSync(CRM_FILE));
+  res.json(data);
+});
 
 app.listen(PORT, () => {
   console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
