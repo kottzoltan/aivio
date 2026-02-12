@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIVIO CRM – Dashboard</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1220;color:#e7eefc}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    .top{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .h1{font-size:26px;font-weight:800;margin:0}
+    .muted{color:#9fb0d6}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+    .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px}
+    .kpi{font-size:26px;font-weight:900}
+    .kpi small{font-size:12px;color:#9fb0d6;font-weight:700}
+    .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+    .half{flex:1;min-width:320px}
+    .bar{height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+    .bar > div{height:100%;background:rgba(90,160,255,.7)}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
+    th{color:#9fb0d6;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    .btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e7eefc;cursor:pointer}
+    .btn:hover{border-color:rgba(120,190,255,.35)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="h1">AIVIO CRM – Dashboard</div>
+        <div class="muted">Odoo CRM adatok, AIVIO felületen</div>
+      </div>
+      <button class="btn" onclick="loadAll()">Frissítés</button>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="muted">Összes lead</div>
+        <div class="kpi" id="kpiLeads">—</div>
+      </div>
+      <div class="card">
+        <div class="muted">Pipeline (Expected)</div>
+        <div class="kpi" id="kpiExpected">— <small>összeg</small></div>
+      </div>
+      <div class="card">
+        <div class="muted">Pipeline (Weighted)</div>
+        <div class="kpi" id="kpiWeighted">— <small>várható</small></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card half">
+        <div style="font-weight:900;margin-bottom:8px">Pipeline stage bontás</div>
+        <div id="pipeline"></div>
+      </div>
+
+      <div class="card half">
+        <div style="font-weight:900;margin-bottom:8px">Legfrissebb leadek</div>
+        <table>
+          <thead>
+            <tr><th>Név</th><th>Státusz</th><th>Dátum</th></tr>
+          </thead>
+          <tbody id="recent"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+function fmt(n){
+  const x = Number(n || 0);
+  return x.toLocaleString("hu-HU");
+}
+
+async function loadPipeline(){
+  const data = await fetch("/api/crm/pipeline").then(r=>r.json());
+
+  document.getElementById("kpiLeads").textContent = fmt(data.totals?.leads);
+  document.getElementById("kpiExpected").innerHTML = fmt(data.totals?.expected) + ' <small>összeg</small>';
+  document.getElementById("kpiWeighted").innerHTML = fmt(data.totals?.weighted) + ' <small>várható</small>';
+
+  const totalCount = (data.pipeline || []).reduce((a,x)=>a+x.count, 0) || 1;
+
+  const root = document.getElementById("pipeline");
+  root.innerHTML = "";
+
+  (data.pipeline || []).forEach(s => {
+    const pct = Math.round((s.count / totalCount) * 100);
+    const row = document.createElement("div");
+    row.style.margin = "10px 0";
+    row.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+        <div style="font-weight:800">${s.stageName}</div>
+        <div class="muted">${s.count} lead • exp: ${fmt(s.sumExpectedRevenue)} • w: ${fmt(s.sumWeightedRevenue)}</div>
+      </div>
+      <div class="bar"><div style="width:${pct}%"></div></div>
+    `;
+    root.appendChild(row);
+  });
+}
+
+async function loadRecent(){
+  const leads = await fetch("/api/crm/recent").then(r=>r.json());
+  const tb = document.getElementById("recent");
+  tb.innerHTML = "";
+  leads.forEach(l => {
+    const stage = (l.stage_id && l.stage_id[1]) ? l.stage_id[1] : "";
+    const d = (l.create_date || "").replace(" ", "T");
+    const date = d ? new Date(d).toLocaleString("hu-HU") : "";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${l.name || ""}</td><td class="muted">${stage}</td><td class="muted">${date}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function loadAll(){
+  await Promise.all([loadPipeline(), loadRecent()]);
+}
+
+loadAll();
+</script>
+</body>
+</html>
