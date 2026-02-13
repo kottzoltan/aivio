@@ -185,6 +185,7 @@
   let running = false;
   let busy = false;
   let history = []; // {role:"user"/"assistant", content:"..."}
+  let activeAudio = null;
 
   function setStatus(kind, text) {
     statusEl.textContent = text;
@@ -216,7 +217,15 @@
     return r.json();
   }
 
-  async function ttsSpeak(text){
+  function stopActiveAudio(){
+    if(!activeAudio) return;
+    try { activeAudio.pause(); } catch(e) {}
+    try { activeAudio.currentTime = 0; } catch(e) {}
+    activeAudio = null;
+  }
+
+  async function ttsSpeak(text, opts = {}){
+    const allowBargeIn = opts.allowBargeIn !== false;
     setLoopState("SPEAKING");
     const r = await fetch("/speak", {
       method:"POST",
@@ -230,12 +239,63 @@
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    activeAudio = audio;
+
+    let interruptedText = "";
+    let speakingDone = false;
+    const sr = allowBargeIn ? ensureRec() : null;
+
+    const cleanupBargeIn = () => {
+      if(!sr) return;
+      sr.onresult = null;
+      sr.onerror = null;
+      sr.onend = null;
+      sr.interimResults = false;
+      sr.continuous = false;
+      try { sr.abort(); } catch(e) {}
+    };
+
+    if (sr) {
+      sr.lang = "hu-HU";
+      sr.interimResults = true;
+      sr.continuous = true;
+
+      sr.onresult = (ev) => {
+        if(speakingDone) return;
+        const i = ev.resultIndex;
+        const res = ev.results?.[i]?.[0]?.transcript?.trim() || "";
+        if(!res) return;
+
+        // barge-in: a felhasználó beleszól -> AI hang leáll, user mondatot feldolgozzuk
+        interruptedText = res;
+        try { audio.pause(); } catch(e) {}
+      };
+
+      sr.onerror = () => {
+        // itt nem állítjuk le a flow-t, csak némán továbblépünk beszéd végéig
+      };
+
+      try { sr.start(); } catch(e) {}
+    }
+
     await new Promise((resolve, reject) => {
-      audio.onended = resolve;
+      const done = () => {
+        if(speakingDone) return;
+        speakingDone = true;
+        resolve();
+      };
+
+      audio.onended = done;
+      audio.onpause = done;
       audio.onerror = reject;
       audio.play().catch(reject);
     });
+
+    cleanupBargeIn();
+
+    if (activeAudio === audio) activeAudio = null;
     URL.revokeObjectURL(url);
+    return { interruptedText: interruptedText.trim() };
   }
 
   // ===== STT (Web Speech API) =====
@@ -290,35 +350,51 @@
   }
 
   // ====== LOOP ======
-  async function loop(){
+  async function handleTurn(userText, meta = "Te") {
+    addMsg("me", userText, meta);
+    history.push({ role:"user", content: userText });
+
+    const answer = await think(userText);
+    if(!running) return { interruptedText: "" };
+
+    addMsg("ai", answer, activeRobotTitle || "Ari");
+    history.push({ role:"assistant", content: answer });
+
+    return ttsSpeak(answer, { allowBargeIn: true });
+  }
+
+  async function loop(seedText = ""){
     if(!running || busy) return;
     busy = true;
 
     try {
-      // 1) hallgat
-      const heard = await listenOnce();
-      if(!running){ busy=false; return; }
+      let currentInput = (seedText || "").trim();
 
-      if(!heard){
-        // csend → hallgasson tovább
-        busy = false;
-        setTimeout(loop, 200);
-        return;
+      while(running) {
+        if(!currentInput) {
+          // 1) hallgat
+          currentInput = await listenOnce();
+          if(!running){ busy=false; return; }
+
+          if(!currentInput){
+            // csend → hallgasson tovább
+            busy = false;
+            setTimeout(loop, 200);
+            return;
+          }
+        }
+
+        const spoken = await handleTurn(currentInput, currentInput === seedText && seedText ? "Te (félbeszakítás)" : "Te");
+        if(!running){ busy=false; return; }
+
+        // user beleszólt az AI mondatába -> azonnali új feldolgozás
+        if(spoken?.interruptedText) {
+          currentInput = spoken.interruptedText;
+          continue;
+        }
+
+        break;
       }
-
-      addMsg("me", heard, "Te");
-      history.push({ role:"user", content: heard });
-
-      // 2) gondolkodik
-      const answer = await think(heard);
-      if(!running){ busy=false; return; }
-
-      // 3) válasz
-      addMsg("ai", answer, activeRobotTitle || "Ari");
-      history.push({ role:"assistant", content: answer });
-
-      // 4) beszél
-      await ttsSpeak(answer);
 
       // 5) újra
       busy = false;
@@ -384,7 +460,11 @@
       const answer = await think(v);
       addMsg("ai", answer, activeRobotTitle || "Ari");
       history.push({ role:"assistant", content: answer });
-      await ttsSpeak(answer);
+      const spoken = await ttsSpeak(answer, { allowBargeIn: true });
+      if (spoken?.interruptedText) {
+        loop(spoken.interruptedText);
+        return;
+      }
     }catch(err){
       addMsg("ai", err.message || String(err), "Hiba");
     }
@@ -393,6 +473,7 @@
   function stopAll(){
     running = false;
     busy = false;
+    stopActiveAudio();
     setLoopState("IDLE");
     setStatus("ok", "IDLE");
     try { if(rec) rec.abort(); } catch(e){}
