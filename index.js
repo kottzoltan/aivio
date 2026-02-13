@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_phase1_structured_2026_02_13";
+const REV = "rev_phase1_tts_flashv25_2026_02_13";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -166,10 +166,7 @@ app.post("/speak", async (req, res) => {
       },
       body: JSON.stringify({
         text,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: {
-          stability: 0.65
-        }
+        model_id: "eleven_flash_v2_5"
       })
     });
 
