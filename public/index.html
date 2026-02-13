@@ -186,6 +186,7 @@
   let busy = false;
   let history = []; // {role:"user"/"assistant", content:"..."}
   let activeAudio = null;
+  let micStream = null;
 
   function setStatus(kind, text) {
     statusEl.textContent = text;
@@ -224,6 +225,72 @@
     activeAudio = null;
   }
 
+  async function ensureMicStream(){
+    if (micStream) return micStream;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("A böngésző nem támogatja a mikrofon hozzáférést.");
+    }
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    return micStream;
+  }
+
+  async function monitorBargeIn(audio){
+    try {
+      const stream = await ensureMicStream();
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return false;
+
+      const ctx = new Ctx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      const src = ctx.createMediaStreamSource(stream);
+      src.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+
+      return await new Promise((resolve) => {
+        let speechFrames = 0;
+
+        const tick = () => {
+          if (audio.paused || audio.ended) {
+            resolve(false);
+            return;
+          }
+
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+
+          if (rms > 0.055) {
+            speechFrames += 1;
+          } else {
+            speechFrames = Math.max(0, speechFrames - 1);
+          }
+
+          if (speechFrames >= 4) {
+            resolve(true);
+            return;
+          }
+
+          requestAnimationFrame(tick);
+        };
+
+        requestAnimationFrame(tick);
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function ttsSpeak(text, opts = {}){
     const allowBargeIn = opts.allowBargeIn !== false;
     setLoopState("SPEAKING");
@@ -241,61 +308,26 @@
     const audio = new Audio(url);
     activeAudio = audio;
 
-    let interruptedText = "";
-    let speakingDone = false;
-    const sr = allowBargeIn ? ensureRec() : null;
-
-    const cleanupBargeIn = () => {
-      if(!sr) return;
-      sr.onresult = null;
-      sr.onerror = null;
-      sr.onend = null;
-      sr.interimResults = false;
-      sr.continuous = false;
-      try { sr.abort(); } catch(e) {}
-    };
-
-    if (sr) {
-      sr.lang = "hu-HU";
-      sr.interimResults = true;
-      sr.continuous = true;
-
-      sr.onresult = (ev) => {
-        if(speakingDone) return;
-        const i = ev.resultIndex;
-        const res = ev.results?.[i]?.[0]?.transcript?.trim() || "";
-        if(!res) return;
-
-        // barge-in: a felhasználó beleszól -> AI hang leáll, user mondatot feldolgozzuk
-        interruptedText = res;
-        try { audio.pause(); } catch(e) {}
-      };
-
-      sr.onerror = () => {
-        // itt nem állítjuk le a flow-t, csak némán továbblépünk beszéd végéig
-      };
-
-      try { sr.start(); } catch(e) {}
-    }
-
-    await new Promise((resolve, reject) => {
+    const interrupted = await new Promise((resolve, reject) => {
       const done = () => {
-        if(speakingDone) return;
-        speakingDone = true;
-        resolve();
+        resolve(false);
       };
 
       audio.onended = done;
-      audio.onpause = done;
       audio.onerror = reject;
-      audio.play().catch(reject);
+      audio.play().then(async () => {
+        if (!allowBargeIn) return;
+        const detected = await monitorBargeIn(audio);
+        if (detected && !audio.paused && !audio.ended) {
+          try { audio.pause(); } catch(e) {}
+          resolve(true);
+        }
+      }).catch(reject);
     });
-
-    cleanupBargeIn();
 
     if (activeAudio === audio) activeAudio = null;
     URL.revokeObjectURL(url);
-    return { interruptedText: interruptedText.trim() };
+    return { interrupted };
   }
 
   // ===== STT (Web Speech API) =====
@@ -387,9 +419,10 @@
         const spoken = await handleTurn(currentInput, currentInput === seedText && seedText ? "Te (félbeszakítás)" : "Te");
         if(!running){ busy=false; return; }
 
-        // user beleszólt az AI mondatába -> azonnali új feldolgozás
-        if(spoken?.interruptedText) {
-          currentInput = spoken.interruptedText;
+        // user beleszólt az AI mondatába -> azonnal hallgatjuk a mondatát
+        if(spoken?.interrupted) {
+          const interruptedHeard = await listenOnce();
+          currentInput = interruptedHeard || "";
           continue;
         }
 
@@ -461,8 +494,9 @@
       addMsg("ai", answer, activeRobotTitle || "Ari");
       history.push({ role:"assistant", content: answer });
       const spoken = await ttsSpeak(answer, { allowBargeIn: true });
-      if (spoken?.interruptedText) {
-        loop(spoken.interruptedText);
+      if (spoken?.interrupted) {
+        const interruptedHeard = await listenOnce();
+        loop(interruptedHeard || "");
         return;
       }
     }catch(err){
