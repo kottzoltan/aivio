@@ -11,10 +11,46 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_full_orchestrated_2026_02_12";
+const REV = "rev_phase1_structured_2026_02_13";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
+
+//////////////////////////////////////////////////////////
+// FILE STORAGE (JSON - CLOUD RUN KOMPATIBILIS DEMO)
+//////////////////////////////////////////////////////////
+
+const DATA_DIR = path.join(__dirname, "data");
+const CONV_FILE = path.join(DATA_DIR, "conversations.json");
+const STRUCTURED_FILE = path.join(DATA_DIR, "structured-conversations.json");
+const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
+const SURVEY_FILE = path.join(DATA_DIR, "survey-answers.json");
+
+function ensureDataFiles() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(CONV_FILE)) fs.writeFileSync(CONV_FILE, JSON.stringify([]));
+  if (!fs.existsSync(STRUCTURED_FILE)) fs.writeFileSync(STRUCTURED_FILE, JSON.stringify([]));
+  if (!fs.existsSync(APPOINTMENTS_FILE)) fs.writeFileSync(APPOINTMENTS_FILE, JSON.stringify([]));
+  if (!fs.existsSync(SURVEY_FILE)) fs.writeFileSync(SURVEY_FILE, JSON.stringify([]));
+}
+
+function readJsonArray(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendJsonItem(filePath, item) {
+  const data = readJsonArray(filePath);
+  data.push(item);
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+ensureDataFiles();
 
 //////////////////////////////////////////////////////////
 // HEALTH
@@ -103,10 +139,9 @@ app.post("/think", async (req, res) => {
     const aiText = completion.choices[0].message.content.trim();
 
     logConversation(robot, text, aiText);
-    await postProcess(robot, text);
+    await postProcess(robot, text, aiText);
 
     res.json({ text: aiText });
-
   } catch (err) {
     console.error("THINK ERROR:", err);
     res.status(500).json({ error: "Thinking failed" });
@@ -114,7 +149,7 @@ app.post("/think", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////////
-// SPEAK (ÉRINTETLEN)
+// SPEAK (ÉRINTETLEN HANGMINŐSÉG)
 //////////////////////////////////////////////////////////
 
 app.post("/speak", async (req, res) => {
@@ -122,26 +157,25 @@ app.post("/speak", async (req, res) => {
     const { text, voiceId } = req.body;
     if (!text || !voiceId) return res.status(400).send("Missing data");
 
-    const r = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVENLABS_API_KEY,
-          "Content-Type": "application/json",
-          Accept: "audio/mpeg"
-        },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_flash_v2_5"
-        })
-      }
-    );
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg"
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.65
+        }
+      })
+    });
 
     const audioBuffer = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
     res.send(audioBuffer);
-
   } catch (err) {
     console.error("SPEAK ERROR:", err);
     res.status(500).send("TTS error");
@@ -152,26 +186,18 @@ app.post("/speak", async (req, res) => {
 // LOCAL CONVERSATION LOG
 //////////////////////////////////////////////////////////
 
-const DATA_DIR = path.join(__dirname, "data");
-const CONV_FILE = path.join(DATA_DIR, "conversations.json");
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-if (!fs.existsSync(CONV_FILE)) fs.writeFileSync(CONV_FILE, JSON.stringify([]));
-
 function logConversation(robot, userText, aiText) {
-  const data = JSON.parse(fs.readFileSync(CONV_FILE));
-  data.push({
+  appendJsonItem(CONV_FILE, {
     id: Date.now(),
     robot,
     userText,
     aiText,
     createdAt: new Date().toISOString()
   });
-  fs.writeFileSync(CONV_FILE, JSON.stringify(data, null, 2));
 }
 
 //////////////////////////////////////////////////////////
-// ODOO LOGIN
+// ODOO LOGIN + HELPERS
 //////////////////////////////////////////////////////////
 
 async function odooLogin() {
@@ -184,11 +210,7 @@ async function odooLogin() {
       params: {
         service: "common",
         method: "login",
-        args: [
-          process.env.ODOO_DB,
-          process.env.ODOO_USER,
-          process.env.ODOO_API_KEY
-        ]
+        args: [process.env.ODOO_DB, process.env.ODOO_USER, process.env.ODOO_API_KEY]
       },
       id: Date.now()
     })
@@ -197,8 +219,29 @@ async function odooLogin() {
   return data.result;
 }
 
+async function odooExecute(uid, model, method, args = [], kwargs = {}) {
+  const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "call",
+      params: {
+        service: "object",
+        method: "execute_kw",
+        args: [process.env.ODOO_DB, uid, process.env.ODOO_API_KEY, model, method, args, kwargs]
+      },
+      id: Date.now()
+    })
+  });
+
+  const data = await r.json();
+  if (data.error) throw new Error(JSON.stringify(data.error));
+  return data.result;
+}
+
 //////////////////////////////////////////////////////////
-// ORCHESTRATION LAYER
+// PHASE 1: STRUCTURED EXTRACTORS
 //////////////////////////////////////////////////////////
 
 function extractContact(text) {
@@ -206,129 +249,320 @@ function extractContact(text) {
   const phone = text.match(/\+?\d[\d\s\-]{7,}/);
   return {
     email: email ? email[0] : null,
-    phone: phone ? phone[0] : null
+    phone: phone ? phone[0].replace(/\s+/g, " ").trim() : null
   };
 }
 
-async function postProcess(robot, text) {
+function extractCompany(text) {
+  const companyPattern = /(?:cég(?:em|ünk)?|vállalat(?:om|unk)?|company)\s*[:\-]?\s*([A-Za-zÀ-ž0-9 .&\-]{2,80})/i;
+  const m = text.match(companyPattern);
+  return m ? m[1].trim() : null;
+}
+
+function parseAppointmentDate(text) {
+  const isoLike = text.match(/\b(20\d{2})[-.\/](\d{1,2})[-.\/](\d{1,2})(?:[ T](\d{1,2})[:.](\d{2}))?\b/);
+  if (isoLike) {
+    const y = Number(isoLike[1]);
+    const mo = Number(isoLike[2]);
+    const d = Number(isoLike[3]);
+    const hh = Number(isoLike[4] || "10");
+    const mm = Number(isoLike[5] || "00");
+    const dt = new Date(Date.UTC(y, mo - 1, d, hh, mm, 0));
+    if (!Number.isNaN(dt.getTime())) return dt;
+  }
+
+  const huLike = text.match(/\b(\d{1,2})[.\-\/](\d{1,2})[.\-\/]?(20\d{2})?(?:\s*(?:at|kor)?\s*(\d{1,2})[:.](\d{2}))?\b/i);
+  if (huLike) {
+    const year = Number(huLike[3] || new Date().getUTCFullYear());
+    const month = Number(huLike[2]);
+    const day = Number(huLike[1]);
+    const hh = Number(huLike[4] || "10");
+    const mm = Number(huLike[5] || "00");
+    const dt = new Date(Date.UTC(year, month - 1, day, hh, mm, 0));
+    if (!Number.isNaN(dt.getTime())) return dt;
+  }
+
+  return null;
+}
+
+function extractSurveyAnswers(text) {
+  const answers = [];
+  const regex = /(?:\b([1-5])\b\s*(?:\/\s*5)?|([1-5])\s*(?:pont|score))/gi;
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    answers.push(Number(m[1] || m[2]));
+  }
+  return answers;
+}
+
+function extractStructuredConversation(text, robot) {
+  const contact = extractContact(text);
+  const company = extractCompany(text);
+  const appointmentDate = parseAppointmentDate(text);
+
+  return {
+    robot,
+    email: contact.email,
+    phone: contact.phone,
+    company,
+    appointmentIsoUtc: appointmentDate ? appointmentDate.toISOString() : null,
+    surveyScores: robot === "customer_satisfaction" ? extractSurveyAnswers(text) : [],
+    rawText: text
+  };
+}
+
+//////////////////////////////////////////////////////////
+// ORCHESTRATION LAYER
+//////////////////////////////////////////////////////////
+
+async function postProcess(robot, text, aiText) {
+  const structured = extractStructuredConversation(text, robot);
+
+  appendJsonItem(STRUCTURED_FILE, {
+    id: Date.now(),
+    createdAt: new Date().toISOString(),
+    ...structured
+  });
+
   try {
     const uid = await odooLogin();
 
     if (robot === "outbound_sales") {
-      const contact = extractContact(text);
-      if (contact.email || contact.phone) {
+      if (structured.email || structured.phone || structured.company) {
+        await odooExecute(uid, "crm.lead", "create", [[{
+          name: structured.company || "AI Sales Lead",
+          email_from: structured.email,
+          phone: structured.phone,
+          description: text
+        }]]);
+      }
 
-        await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "call",
-            params: {
-              service: "object",
-              method: "execute_kw",
-              args: [
-                process.env.ODOO_DB,
-                uid,
-                process.env.ODOO_API_KEY,
-                "crm.lead",
-                "create",
-                [{
-                  name: "AI Sales Lead",
-                  email_from: contact.email,
-                  phone: contact.phone,
-                  description: text
-                }]
-              ]
-            },
-            id: Date.now()
-          })
-        });
+      if (structured.appointmentIsoUtc) {
+        const start = new Date(structured.appointmentIsoUtc);
+        const stop = new Date(start.getTime() + 60 * 60 * 1000);
 
-        await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "call",
-            params: {
-              service: "object",
-              method: "execute_kw",
-              args: [
-                process.env.ODOO_DB,
-                uid,
-                process.env.ODOO_API_KEY,
-                "calendar.event",
-                "create",
-                [{
-                  name: "AI Sales Meeting",
-                  description: text
-                }]
-              ]
-            },
-            id: Date.now()
-          })
+        const calendarId = await odooExecute(uid, "calendar.event", "create", [[{
+          name: "AI Sales Meeting",
+          description: text,
+          start: start.toISOString().slice(0, 19).replace("T", " "),
+          stop: stop.toISOString().slice(0, 19).replace("T", " ")
+        }]]);
+
+        appendJsonItem(APPOINTMENTS_FILE, {
+          id: Date.now(),
+          robot,
+          source: "outbound_sales",
+          text,
+          aiText,
+          startUtc: start.toISOString(),
+          stopUtc: stop.toISOString(),
+          odooCalendarEventId: calendarId,
+          createdAt: new Date().toISOString()
         });
       }
     }
 
     if (robot === "email_sales") {
-      await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "call",
-          params: {
-            service: "object",
-            method: "execute_kw",
-            args: [
-              process.env.ODOO_DB,
-              uid,
-              process.env.ODOO_API_KEY,
-              "calendar.event",
-              "create",
-              [{
-                name: "AI Booking",
-                description: text
-              }]
-            ]
-          },
-          id: Date.now()
-        })
+      const parsedStart = structured.appointmentIsoUtc ? new Date(structured.appointmentIsoUtc) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const parsedStop = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+
+      const bookingId = await odooExecute(uid, "calendar.event", "create", [[{
+        name: "AI Booking",
+        description: text,
+        start: parsedStart.toISOString().slice(0, 19).replace("T", " "),
+        stop: parsedStop.toISOString().slice(0, 19).replace("T", " ")
+      }]]);
+
+      appendJsonItem(APPOINTMENTS_FILE, {
+        id: Date.now(),
+        robot,
+        source: "email_sales",
+        text,
+        aiText,
+        startUtc: parsedStart.toISOString(),
+        stopUtc: parsedStop.toISOString(),
+        odooCalendarEventId: bookingId,
+        createdAt: new Date().toISOString()
       });
     }
 
     if (robot === "customer_satisfaction") {
-      await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "call",
-          params: {
-            service: "object",
-            method: "execute_kw",
-            args: [
-              process.env.ODOO_DB,
-              uid,
-              process.env.ODOO_API_KEY,
-              "survey.user_input",
-              "create",
-              [{
-                state: "done"
-              }]
-            ]
-          },
-          id: Date.now()
-        })
+      const surveyId = await odooExecute(uid, "survey.user_input", "create", [[{ state: "done" }]]);
+
+      appendJsonItem(SURVEY_FILE, {
+        id: Date.now(),
+        robot,
+        odooSurveyInputId: surveyId,
+        answers: structured.surveyScores,
+        rawText: text,
+        aiText,
+        createdAt: new Date().toISOString()
       });
     }
-
   } catch (err) {
     console.error("POST PROCESS ERROR:", err);
   }
 }
+
+//////////////////////////////////////////////////////////
+// ADMIN + CRM API
+//////////////////////////////////////////////////////////
+
+app.get("/admin/conversations", (req, res) => {
+  res.json(readJsonArray(CONV_FILE).slice(-300).reverse());
+});
+
+app.get("/admin/structured", (req, res) => {
+  res.json(readJsonArray(STRUCTURED_FILE).slice(-300).reverse());
+});
+
+app.get("/crm/list", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+    const leads = await odooExecute(uid, "crm.lead", "search_read", [[]], {
+      fields: ["id", "name", "email_from", "phone", "stage_id", "create_date"],
+      limit: 50,
+      order: "create_date desc"
+    });
+    res.json(leads);
+  } catch (err) {
+    console.error("CRM LIST ERROR:", err);
+    res.status(500).json({ error: "CRM list failed" });
+  }
+});
+
+app.get("/api/crm/leads", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+    const leads = await odooExecute(uid, "crm.lead", "search_read", [[]], {
+      fields: ["id", "name", "email_from", "phone", "stage_id", "create_date", "expected_revenue", "probability"],
+      limit: 200,
+      order: "create_date desc"
+    });
+    res.json(leads);
+  } catch (err) {
+    console.error("CRM LEADS ERROR:", err);
+    res.status(500).json({ error: "CRM leads failed" });
+  }
+});
+
+app.get("/api/crm/stages", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+    const stages = await odooExecute(uid, "crm.stage", "search_read", [[]], {
+      fields: ["id", "name", "sequence"],
+      order: "sequence asc"
+    });
+    res.json(stages);
+  } catch (err) {
+    console.error("CRM STAGES ERROR:", err);
+    res.status(500).json({ error: "CRM stages failed" });
+  }
+});
+
+app.post("/api/crm/update-stage", async (req, res) => {
+  try {
+    const { leadId, stageId } = req.body || {};
+    if (!leadId || !stageId) return res.status(400).json({ error: "Missing leadId or stageId" });
+
+    const uid = await odooLogin();
+    await odooExecute(uid, "crm.lead", "write", [[Number(leadId)], { stage_id: Number(stageId) }]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("CRM UPDATE STAGE ERROR:", err);
+    res.status(500).json({ error: "Update stage failed" });
+  }
+});
+
+app.post("/api/crm/add-note", async (req, res) => {
+  try {
+    const { leadId, message } = req.body || {};
+    if (!leadId || !message) return res.status(400).json({ error: "Missing leadId or message" });
+
+    const uid = await odooLogin();
+    await odooExecute(uid, "mail.message", "create", [[{
+      model: "crm.lead",
+      res_id: Number(leadId),
+      body: String(message),
+      message_type: "comment",
+      subtype_id: 1
+    }]]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("CRM ADD NOTE ERROR:", err);
+    res.status(500).json({ error: "Add note failed" });
+  }
+});
+
+app.get("/api/crm/recent", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+    const leads = await odooExecute(uid, "crm.lead", "search_read", [[]], {
+      fields: ["id", "name", "stage_id", "create_date"],
+      limit: 10,
+      order: "create_date desc"
+    });
+    res.json(leads);
+  } catch (err) {
+    console.error("CRM RECENT ERROR:", err);
+    res.status(500).json({ error: "Recent leads failed" });
+  }
+});
+
+app.get("/api/crm/pipeline", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+
+    const [stages, leads] = await Promise.all([
+      odooExecute(uid, "crm.stage", "search_read", [[]], { fields: ["id", "name", "sequence"], order: "sequence asc" }),
+      odooExecute(uid, "crm.lead", "search_read", [[]], {
+        fields: ["id", "stage_id", "expected_revenue", "probability"],
+        limit: 1000
+      })
+    ]);
+
+    const byStage = new Map();
+    stages.forEach((s) => {
+      byStage.set(s.id, {
+        stageId: s.id,
+        stageName: s.name,
+        count: 0,
+        sumExpectedRevenue: 0,
+        sumWeightedRevenue: 0
+      });
+    });
+
+    leads.forEach((l) => {
+      const sid = Array.isArray(l.stage_id) ? l.stage_id[0] : null;
+      if (!sid || !byStage.has(sid)) return;
+
+      const expected = Number(l.expected_revenue || 0);
+      const probability = Number(l.probability || 0) / 100;
+      const bucket = byStage.get(sid);
+
+      bucket.count += 1;
+      bucket.sumExpectedRevenue += expected;
+      bucket.sumWeightedRevenue += expected * probability;
+    });
+
+    const pipeline = [...byStage.values()];
+    const totals = pipeline.reduce(
+      (acc, s) => {
+        acc.leads += s.count;
+        acc.expected += s.sumExpectedRevenue;
+        acc.weighted += s.sumWeightedRevenue;
+        return acc;
+      },
+      { leads: 0, expected: 0, weighted: 0 }
+    );
+
+    res.json({ rev: REV, generatedAt: new Date().toISOString(), totals, pipeline });
+  } catch (err) {
+    console.error("CRM PIPELINE ERROR:", err);
+    res.status(500).json({ error: "Pipeline failed" });
+  }
+});
 
 //////////////////////////////////////////////////////////
 // START SERVER
