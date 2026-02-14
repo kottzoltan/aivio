@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_phase1_silence_handling_2026_02_14";
+const REV = "rev_phase1_robot_cms_odoo_2026_02_14";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -25,6 +25,8 @@ const CONV_FILE = path.join(DATA_DIR, "conversations.json");
 const STRUCTURED_FILE = path.join(DATA_DIR, "structured-conversations.json");
 const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
 const SURVEY_FILE = path.join(DATA_DIR, "survey-answers.json");
+const ROBOT_CMS_FILE = path.join(DATA_DIR, "robot-cms.json");
+const ROBOT_CMS_SYNC_FILE = path.join(DATA_DIR, "robot-cms-sync-log.json");
 
 function ensureDataFiles() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -32,6 +34,8 @@ function ensureDataFiles() {
   if (!fs.existsSync(STRUCTURED_FILE)) fs.writeFileSync(STRUCTURED_FILE, JSON.stringify([]));
   if (!fs.existsSync(APPOINTMENTS_FILE)) fs.writeFileSync(APPOINTMENTS_FILE, JSON.stringify([]));
   if (!fs.existsSync(SURVEY_FILE)) fs.writeFileSync(SURVEY_FILE, JSON.stringify([]));
+  if (!fs.existsSync(ROBOT_CMS_FILE)) fs.writeFileSync(ROBOT_CMS_FILE, JSON.stringify({}));
+  if (!fs.existsSync(ROBOT_CMS_SYNC_FILE)) fs.writeFileSync(ROBOT_CMS_SYNC_FILE, JSON.stringify([]));
 }
 
 function readJsonArray(filePath) {
@@ -48,6 +52,22 @@ function appendJsonItem(filePath, item) {
   const data = readJsonArray(filePath);
   data.push(item);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+
+function readJsonObject(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeJsonObject(filePath, data) {
+  const safe = data && typeof data === "object" ? data : {};
+  fs.writeFileSync(filePath, JSON.stringify(safe, null, 2));
 }
 
 ensureDataFiles();
@@ -103,12 +123,60 @@ Lépésről lépésre segíts.
   }
 };
 
+function getCmsOverrides() {
+  return readJsonObject(ROBOT_CMS_FILE);
+}
+
+function getRobotConfig(robotKey) {
+  const base = ROBOTS[robotKey];
+  if (!base) return null;
+
+  const cms = getCmsOverrides()[robotKey] || {};
+  return {
+    key: robotKey,
+    title: String(cms.title || base.title),
+    intro: String(cms.intro || base.intro),
+    systemPrompt: String(cms.systemPrompt || base.systemPrompt),
+    styleGuide: String(cms.styleGuide || ""),
+    script: String(cms.script || ""),
+    knowledgeBase: String(cms.knowledgeBase || ""),
+    updatedAt: cms.updatedAt || null,
+    source: cms.updatedAt ? "cms_override" : "default"
+  };
+}
+
+function buildRobotSystemPrompt(cfg) {
+  const parts = [cfg.systemPrompt.trim()];
+
+  if (cfg.styleGuide?.trim()) {
+    parts.push(`STÍLUS ÚTMUTATÓ:
+${cfg.styleGuide.trim()}`);
+  }
+
+  if (cfg.script?.trim()) {
+    parts.push(`KÖTELEZŐ SCRIPT / MENET:
+${cfg.script.trim()}`);
+  }
+
+  if (cfg.knowledgeBase?.trim()) {
+    parts.push(`TUDÁSANYAG:
+${cfg.knowledgeBase.trim()}`);
+  }
+
+  return parts.join("\n\n");
+}
+
 app.get("/robots", (req, res) => {
-  const list = Object.entries(ROBOTS).map(([key, v]) => ({
-    key,
-    title: v.title,
-    intro: v.intro
-  }));
+  const list = Object.keys(ROBOTS).map((key) => {
+    const cfg = getRobotConfig(key);
+    return {
+      key,
+      title: cfg.title,
+      intro: cfg.intro,
+      source: cfg.source,
+      updatedAt: cfg.updatedAt
+    };
+  });
   res.json({ robots: list });
 });
 
@@ -121,7 +189,7 @@ app.post("/think", async (req, res) => {
     const { text, robot = "outbound_sales", history = [] } = req.body || {};
     if (!text) return res.status(400).json({ error: "Missing text" });
 
-    const cfg = ROBOTS[robot];
+    const cfg = getRobotConfig(robot);
     if (!cfg) return res.status(400).json({ error: "Unknown robot" });
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -129,7 +197,7 @@ app.post("/think", async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4.1",
       messages: [
-        { role: "system", content: cfg.systemPrompt },
+        { role: "system", content: buildRobotSystemPrompt(cfg) },
         ...(Array.isArray(history) ? history.slice(-10) : []),
         { role: "user", content: text }
       ],
@@ -558,6 +626,107 @@ app.get("/api/crm/pipeline", async (req, res) => {
   } catch (err) {
     console.error("CRM PIPELINE ERROR:", err);
     res.status(500).json({ error: "Pipeline failed" });
+  }
+});
+
+//////////////////////////////////////////////////////////
+// CMS API (ROBOT INSTRUKCIÓ + ODOO SZINKRON)
+//////////////////////////////////////////////////////////
+
+app.get("/api/cms/robots", (req, res) => {
+  const robots = Object.keys(ROBOTS).map((key) => getRobotConfig(key));
+  const syncLog = readJsonArray(ROBOT_CMS_SYNC_FILE).slice(-20).reverse();
+  res.json({ rev: REV, robots, syncLog });
+});
+
+app.get("/api/cms/robots/:key", (req, res) => {
+  const cfg = getRobotConfig(req.params.key);
+  if (!cfg) return res.status(404).json({ error: "Unknown robot" });
+  res.json(cfg);
+});
+
+app.put("/api/cms/robots/:key", async (req, res) => {
+  try {
+    const robotKey = req.params.key;
+    const base = ROBOTS[robotKey];
+    if (!base) return res.status(404).json({ error: "Unknown robot" });
+
+    const {
+      title = "",
+      intro = "",
+      systemPrompt = "",
+      styleGuide = "",
+      script = "",
+      knowledgeBase = "",
+      syncToOdoo = true
+    } = req.body || {};
+
+    const overrides = getCmsOverrides();
+    const updatedAt = new Date().toISOString();
+
+    overrides[robotKey] = {
+      title: String(title || base.title).trim(),
+      intro: String(intro || base.intro).trim(),
+      systemPrompt: String(systemPrompt || base.systemPrompt).trim(),
+      styleGuide: String(styleGuide || "").trim(),
+      script: String(script || "").trim(),
+      knowledgeBase: String(knowledgeBase || "").trim(),
+      updatedAt
+    };
+
+    writeJsonObject(ROBOT_CMS_FILE, overrides);
+
+    let odooSync = { attempted: false, ok: false, leadId: null, error: null };
+
+    if (syncToOdoo) {
+      odooSync.attempted = true;
+      try {
+        const uid = await odooLogin();
+        const cfg = getRobotConfig(robotKey);
+        const leadId = await odooExecute(uid, "crm.lead", "create", [[{
+          name: `CMS update: ${cfg.title}`,
+          type: "opportunity",
+          description: [
+            `Robot key: ${robotKey}`,
+            `Updated at: ${updatedAt}`,
+            `Intro: ${cfg.intro}`,
+            "",
+            "System prompt:",
+            cfg.systemPrompt,
+            "",
+            "Style guide:",
+            cfg.styleGuide || "(üres)",
+            "",
+            "Script:",
+            cfg.script || "(üres)",
+            "",
+            "Knowledge base:",
+            cfg.knowledgeBase || "(üres)"
+          ].join("\n")
+        }]]);
+
+        odooSync.ok = true;
+        odooSync.leadId = leadId;
+      } catch (err) {
+        odooSync.error = err?.message || String(err);
+      }
+    }
+
+    appendJsonItem(ROBOT_CMS_SYNC_FILE, {
+      id: Date.now(),
+      robotKey,
+      updatedAt,
+      odooSync
+    });
+
+    res.json({
+      ok: true,
+      robot: getRobotConfig(robotKey),
+      odooSync
+    });
+  } catch (err) {
+    console.error("CMS UPDATE ERROR:", err);
+    res.status(500).json({ error: "CMS update failed" });
   }
 });
 
