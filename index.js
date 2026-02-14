@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_phase1_robot_cms_odoo_2026_02_14";
+const REV = "rev_phase1_cms_firestore_2026_02_14";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -27,6 +27,33 @@ const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
 const SURVEY_FILE = path.join(DATA_DIR, "survey-answers.json");
 const ROBOT_CMS_FILE = path.join(DATA_DIR, "robot-cms.json");
 const ROBOT_CMS_SYNC_FILE = path.join(DATA_DIR, "robot-cms-sync-log.json");
+
+const CMS_STORAGE_PROVIDER = (process.env.CMS_STORAGE_PROVIDER || "auto").toLowerCase();
+let firestoreDb = null;
+let firestoreInitAttempted = false;
+
+function shouldUseFirestore() {
+  if (CMS_STORAGE_PROVIDER === "file" || CMS_STORAGE_PROVIDER === "json") return false;
+  if (CMS_STORAGE_PROVIDER === "firestore") return true;
+  return !!process.env.GOOGLE_CLOUD_PROJECT;
+}
+
+async function getFirestoreDb() {
+  if (firestoreDb) return firestoreDb;
+  if (firestoreInitAttempted) return null;
+  firestoreInitAttempted = true;
+
+  if (!shouldUseFirestore()) return null;
+
+  try {
+    const { Firestore } = await import("@google-cloud/firestore");
+    firestoreDb = new Firestore();
+    return firestoreDb;
+  } catch (err) {
+    console.error("FIRESTORE INIT ERROR:", err?.message || err);
+    return null;
+  }
+}
 
 function ensureDataFiles() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -123,15 +150,75 @@ Lépésről lépésre segíts.
   }
 };
 
-function getCmsOverrides() {
-  return readJsonObject(ROBOT_CMS_FILE);
+async function readCmsOverrides() {
+  const db = await getFirestoreDb();
+  if (!db) return readJsonObject(ROBOT_CMS_FILE);
+
+  try {
+    const snap = await db.collection("aivio_cms").doc("robot_overrides").get();
+    if (!snap.exists) return {};
+    const data = snap.data() || {};
+    return data.overrides && typeof data.overrides === "object" ? data.overrides : {};
+  } catch (err) {
+    console.error("CMS READ ERROR:", err?.message || err);
+    return readJsonObject(ROBOT_CMS_FILE);
+  }
 }
 
-function getRobotConfig(robotKey) {
+async function writeCmsOverrides(overrides) {
+  const db = await getFirestoreDb();
+
+  writeJsonObject(ROBOT_CMS_FILE, overrides);
+
+  if (!db) return;
+  try {
+    await db.collection("aivio_cms").doc("robot_overrides").set({
+      overrides,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error("CMS WRITE ERROR:", err?.message || err);
+  }
+}
+
+async function readCmsSyncLog(limit = 20) {
+  const db = await getFirestoreDb();
+  if (!db) return readJsonArray(ROBOT_CMS_SYNC_FILE).slice(-limit).reverse();
+
+  try {
+    const snap = await db
+      .collection("aivio_cms_sync_log")
+      .orderBy("updatedAt", "desc")
+      .limit(limit)
+      .get();
+
+    const rows = [];
+    snap.forEach((doc) => rows.push(doc.data()));
+    return rows;
+  } catch (err) {
+    console.error("CMS SYNC LOG READ ERROR:", err?.message || err);
+    return readJsonArray(ROBOT_CMS_SYNC_FILE).slice(-limit).reverse();
+  }
+}
+
+async function appendCmsSyncLog(item) {
+  appendJsonItem(ROBOT_CMS_SYNC_FILE, item);
+
+  const db = await getFirestoreDb();
+  if (!db) return;
+
+  try {
+    await db.collection("aivio_cms_sync_log").doc(String(item.id)).set(item);
+  } catch (err) {
+    console.error("CMS SYNC LOG WRITE ERROR:", err?.message || err);
+  }
+}
+
+function getRobotConfigFromOverrides(robotKey, overrides = {}) {
   const base = ROBOTS[robotKey];
   if (!base) return null;
 
-  const cms = getCmsOverrides()[robotKey] || {};
+  const cms = overrides[robotKey] || {};
   return {
     key: robotKey,
     title: String(cms.title || base.title),
@@ -143,6 +230,11 @@ function getRobotConfig(robotKey) {
     updatedAt: cms.updatedAt || null,
     source: cms.updatedAt ? "cms_override" : "default"
   };
+}
+
+async function getRobotConfig(robotKey) {
+  const overrides = await readCmsOverrides();
+  return getRobotConfigFromOverrides(robotKey, overrides);
 }
 
 function buildRobotSystemPrompt(cfg) {
@@ -166,9 +258,10 @@ ${cfg.knowledgeBase.trim()}`);
   return parts.join("\n\n");
 }
 
-app.get("/robots", (req, res) => {
+app.get("/robots", async (req, res) => {
+  const overrides = await readCmsOverrides();
   const list = Object.keys(ROBOTS).map((key) => {
-    const cfg = getRobotConfig(key);
+    const cfg = getRobotConfigFromOverrides(key, overrides);
     return {
       key,
       title: cfg.title,
@@ -189,7 +282,7 @@ app.post("/think", async (req, res) => {
     const { text, robot = "outbound_sales", history = [] } = req.body || {};
     if (!text) return res.status(400).json({ error: "Missing text" });
 
-    const cfg = getRobotConfig(robot);
+    const cfg = await getRobotConfig(robot);
     if (!cfg) return res.status(400).json({ error: "Unknown robot" });
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -633,14 +726,16 @@ app.get("/api/crm/pipeline", async (req, res) => {
 // CMS API (ROBOT INSTRUKCIÓ + ODOO SZINKRON)
 //////////////////////////////////////////////////////////
 
-app.get("/api/cms/robots", (req, res) => {
-  const robots = Object.keys(ROBOTS).map((key) => getRobotConfig(key));
-  const syncLog = readJsonArray(ROBOT_CMS_SYNC_FILE).slice(-20).reverse();
-  res.json({ rev: REV, robots, syncLog });
+app.get("/api/cms/robots", async (req, res) => {
+  const overrides = await readCmsOverrides();
+  const robots = Object.keys(ROBOTS).map((key) => getRobotConfigFromOverrides(key, overrides));
+  const syncLog = await readCmsSyncLog(20);
+  res.json({ rev: REV, storage: shouldUseFirestore() ? "firestore_or_fallback" : "file", robots, syncLog });
 });
 
-app.get("/api/cms/robots/:key", (req, res) => {
-  const cfg = getRobotConfig(req.params.key);
+app.get("/api/cms/robots/:key", async (req, res) => {
+  const overrides = await readCmsOverrides();
+  const cfg = getRobotConfigFromOverrides(req.params.key, overrides);
   if (!cfg) return res.status(404).json({ error: "Unknown robot" });
   res.json(cfg);
 });
@@ -661,7 +756,7 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       syncToOdoo = true
     } = req.body || {};
 
-    const overrides = getCmsOverrides();
+    const overrides = await readCmsOverrides();
     const updatedAt = new Date().toISOString();
 
     overrides[robotKey] = {
@@ -674,7 +769,7 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       updatedAt
     };
 
-    writeJsonObject(ROBOT_CMS_FILE, overrides);
+    await writeCmsOverrides(overrides);
 
     let odooSync = { attempted: false, ok: false, leadId: null, error: null };
 
@@ -682,7 +777,7 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       odooSync.attempted = true;
       try {
         const uid = await odooLogin();
-        const cfg = getRobotConfig(robotKey);
+        const cfg = getRobotConfigFromOverrides(robotKey, overrides);
         const leadId = await odooExecute(uid, "crm.lead", "create", [[{
           name: `CMS update: ${cfg.title}`,
           type: "opportunity",
@@ -712,16 +807,18 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       }
     }
 
-    appendJsonItem(ROBOT_CMS_SYNC_FILE, {
+    const syncEvent = {
       id: Date.now(),
       robotKey,
       updatedAt,
       odooSync
-    });
+    };
+
+    await appendCmsSyncLog(syncEvent);
 
     res.json({
       ok: true,
-      robot: getRobotConfig(robotKey),
+      robot: getRobotConfigFromOverrides(robotKey, overrides),
       odooSync
     });
   } catch (err) {
