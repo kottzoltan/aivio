@@ -161,7 +161,7 @@
         <button id="sendBtn">Küld</button>
         <button id="stopBtn">Stop</button>
       </div>
-      <div class="hint">ESC nincs bekötve — Stop gombbal állítsd le a loopot.</div>
+      <div class="hint">ESC nincs bekötve — Stop gombbal állítsd le a loopot. 3 egymást követő csend után automatikusan leáll.</div>
     </div>
   </div>
 
@@ -169,6 +169,8 @@
 (() => {
   const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari (ElevenLabs)
   const TTS_MODEL = "eleven_flash_v2_5";
+  const LISTEN_TIMEOUT_MS = 7000;
+  const MAX_SILENT_TURNS = 3;
 
   const el = (id) => document.getElementById(id);
   const chatEl = el("chat");
@@ -187,6 +189,7 @@
   let history = []; // {role:"user"/"assistant", content:"..."}
   let activeAudio = null;
   let micStream = null;
+  let silentTurns = 0;
 
   function setStatus(kind, text) {
     statusEl.textContent = text;
@@ -352,26 +355,38 @@
 
     return new Promise((resolve, reject) => {
       let done = false;
+      let timeoutId = null;
+
+      const finish = (value, isError = false) => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        if (isError) reject(value); else resolve(value);
+      };
 
       r.onresult = (ev) => {
-        if(done) return;
-        done = true;
         const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
-        resolve(text);
+        finish(text);
       };
       r.onerror = (e) => {
-        if(done) return;
-        done = true;
-        reject(new Error("STT error: " + (e.error || "unknown")));
+        const code = e?.error || "unknown";
+        if (code === "no-speech" || code === "aborted") {
+          finish("");
+          return;
+        }
+        finish(new Error("STT error: " + code), true);
       };
       r.onend = () => {
         // ha end van, de nem jött result, az gyakran csend
-        if(done) return;
-        done = true;
-        resolve("");
+        finish("");
       };
 
-      try { r.start(); } catch(err){ reject(err); }
+      timeoutId = setTimeout(() => {
+        try { r.abort(); } catch(e) {}
+        finish("");
+      }, LISTEN_TIMEOUT_MS);
+
+      try { r.start(); } catch(err){ finish(err, true); }
     });
   }
 
@@ -409,12 +424,20 @@
           if(!running){ busy=false; return; }
 
           if(!currentInput){
+            silentTurns += 1;
+            if (silentTurns >= MAX_SILENT_TURNS) {
+              addMsg("ai", "Nem hallottam választ, ezért most leállok. Kattints újra egy robotra, ha folytatjuk.", "AIVIO");
+              stopAll();
+              return;
+            }
             // csend → hallgasson tovább
             busy = false;
             setTimeout(loop, 200);
             return;
           }
         }
+
+        silentTurns = 0;
 
         const spoken = await handleTurn(currentInput, currentInput === seedText && seedText ? "Te (félbeszakítás)" : "Te");
         if(!running){ busy=false; return; }
@@ -456,6 +479,7 @@
     setStatus("ok", "RUNNING");
     running = true;
     busy = false;
+    silentTurns = 0;
 
     // intro chat + hang
     addMsg("ai", intro, robotTitle);
@@ -508,6 +532,7 @@
     running = false;
     busy = false;
     stopActiveAudio();
+    silentTurns = 0;
     setLoopState("IDLE");
     setStatus("ok", "IDLE");
     try { if(rec) rec.abort(); } catch(e){}
