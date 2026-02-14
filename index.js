@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_phase1_cms_firestore_2026_02_14";
+const REV = "rev_phase1_odoo_sync_guard_2026_02_14";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -358,6 +358,22 @@ function logConversation(robot, userText, aiText) {
 // ODOO LOGIN + HELPERS
 //////////////////////////////////////////////////////////
 
+function parseOdooErrorMessage(rawError) {
+  if (!rawError) return "Ismeretlen Odoo hiba";
+
+  const rawText = typeof rawError === "string" ? rawError : (rawError.message || String(rawError));
+  try {
+    const parsed = JSON.parse(rawText);
+    if (parsed?.error?.data?.message) return parsed.error.data.message;
+    if (parsed?.error?.message) return parsed.error.message;
+    if (parsed?.message) return parsed.message;
+  } catch {
+    // ignore JSON parse error
+  }
+
+  return rawText;
+}
+
 async function odooLogin() {
   const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
     method: "POST",
@@ -373,11 +389,26 @@ async function odooLogin() {
       id: Date.now()
     })
   });
+
   const data = await r.json();
-  return data.result;
+
+  if (data?.error) {
+    throw new Error(`Odoo login hiba: ${parseOdooErrorMessage(JSON.stringify(data))}`);
+  }
+
+  const uid = data?.result;
+  if (!uid) {
+    throw new Error("Odoo login sikertelen: nincs UID. Ellenőrizd az ODOO_DB / ODOO_USER / ODOO_API_KEY értékeket.");
+  }
+
+  return Number(uid);
 }
 
 async function odooExecute(uid, model, method, args = [], kwargs = {}) {
+  if (!uid) {
+    throw new Error("Odoo művelet megszakítva: hiányzó UID (login sikertelen).");
+  }
+
   const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -394,7 +425,7 @@ async function odooExecute(uid, model, method, args = [], kwargs = {}) {
   });
 
   const data = await r.json();
-  if (data.error) throw new Error(JSON.stringify(data.error));
+  if (data.error) throw new Error(parseOdooErrorMessage(JSON.stringify(data)));
   return data.result;
 }
 
@@ -803,7 +834,7 @@ app.put("/api/cms/robots/:key", async (req, res) => {
         odooSync.ok = true;
         odooSync.leadId = leadId;
       } catch (err) {
-        odooSync.error = err?.message || String(err);
+        odooSync.error = parseOdooErrorMessage(err);
       }
     }
 
