@@ -106,6 +106,8 @@
       <div class="pill"><span id="dot" class="dot"></span><b id="status">IDLE</b><span id="rev" style="margin-left:10px"></span></div>
       <div class="pill">Voice: <b>Ari</b> (7B7mSWflzRSaO1yGeJH6)</div>
       <div class="pill">Backend: <span id="backend">checking…</span></div>
+      <a class="pill" href="/cms.html" style="text-decoration:none">Robot CMS</a>
+      <a class="pill" href="/crm-dashboard.html" style="text-decoration:none">CRM Dashboard</a>
     </div>
 
     <div class="grid" id="cards">
@@ -161,7 +163,7 @@
         <button id="sendBtn">Küld</button>
         <button id="stopBtn">Stop</button>
       </div>
-      <div class="hint">ESC nincs bekötve — Stop gombbal állítsd le a loopot.</div>
+      <div class="hint">ESC nincs bekötve — Stop gombbal állítsd le a loopot. 3 egymást követő csend után automatikusan leáll.</div>
     </div>
   </div>
 
@@ -169,6 +171,8 @@
 (() => {
   const VOICE_ID = "7B7mSWflzRSaO1yGeJH6"; // Ari (ElevenLabs)
   const TTS_MODEL = "eleven_flash_v2_5";
+  const LISTEN_TIMEOUT_MS = 7000;
+  const MAX_SILENT_TURNS = 3;
 
   const el = (id) => document.getElementById(id);
   const chatEl = el("chat");
@@ -185,6 +189,9 @@
   let running = false;
   let busy = false;
   let history = []; // {role:"user"/"assistant", content:"..."}
+  let activeAudio = null;
+  let micStream = null;
+  let silentTurns = 0;
 
   function setStatus(kind, text) {
     statusEl.textContent = text;
@@ -216,7 +223,81 @@
     return r.json();
   }
 
-  async function ttsSpeak(text){
+  function stopActiveAudio(){
+    if(!activeAudio) return;
+    try { activeAudio.pause(); } catch(e) {}
+    try { activeAudio.currentTime = 0; } catch(e) {}
+    activeAudio = null;
+  }
+
+  async function ensureMicStream(){
+    if (micStream) return micStream;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("A böngésző nem támogatja a mikrofon hozzáférést.");
+    }
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    return micStream;
+  }
+
+  async function monitorBargeIn(audio){
+    try {
+      const stream = await ensureMicStream();
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return false;
+
+      const ctx = new Ctx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      const src = ctx.createMediaStreamSource(stream);
+      src.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+
+      return await new Promise((resolve) => {
+        let speechFrames = 0;
+
+        const tick = () => {
+          if (audio.paused || audio.ended) {
+            resolve(false);
+            return;
+          }
+
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+
+          if (rms > 0.055) {
+            speechFrames += 1;
+          } else {
+            speechFrames = Math.max(0, speechFrames - 1);
+          }
+
+          if (speechFrames >= 4) {
+            resolve(true);
+            return;
+          }
+
+          requestAnimationFrame(tick);
+        };
+
+        requestAnimationFrame(tick);
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function ttsSpeak(text, opts = {}){
+    const allowBargeIn = opts.allowBargeIn !== false;
     setLoopState("SPEAKING");
     const r = await fetch("/speak", {
       method:"POST",
@@ -230,12 +311,28 @@
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    await new Promise((resolve, reject) => {
-      audio.onended = resolve;
+    activeAudio = audio;
+
+    const interrupted = await new Promise((resolve, reject) => {
+      const done = () => {
+        resolve(false);
+      };
+
+      audio.onended = done;
       audio.onerror = reject;
-      audio.play().catch(reject);
+      audio.play().then(async () => {
+        if (!allowBargeIn) return;
+        const detected = await monitorBargeIn(audio);
+        if (detected && !audio.paused && !audio.ended) {
+          try { audio.pause(); } catch(e) {}
+          resolve(true);
+        }
+      }).catch(reject);
     });
+
+    if (activeAudio === audio) activeAudio = null;
     URL.revokeObjectURL(url);
+    return { interrupted };
   }
 
   // ===== STT (Web Speech API) =====
@@ -260,26 +357,38 @@
 
     return new Promise((resolve, reject) => {
       let done = false;
+      let timeoutId = null;
+
+      const finish = (value, isError = false) => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        if (isError) reject(value); else resolve(value);
+      };
 
       r.onresult = (ev) => {
-        if(done) return;
-        done = true;
         const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
-        resolve(text);
+        finish(text);
       };
       r.onerror = (e) => {
-        if(done) return;
-        done = true;
-        reject(new Error("STT error: " + (e.error || "unknown")));
+        const code = e?.error || "unknown";
+        if (code === "no-speech" || code === "aborted") {
+          finish("");
+          return;
+        }
+        finish(new Error("STT error: " + code), true);
       };
       r.onend = () => {
         // ha end van, de nem jött result, az gyakran csend
-        if(done) return;
-        done = true;
-        resolve("");
+        finish("");
       };
 
-      try { r.start(); } catch(err){ reject(err); }
+      timeoutId = setTimeout(() => {
+        try { r.abort(); } catch(e) {}
+        finish("");
+      }, LISTEN_TIMEOUT_MS);
+
+      try { r.start(); } catch(err){ finish(err, true); }
     });
   }
 
@@ -290,35 +399,60 @@
   }
 
   // ====== LOOP ======
-  async function loop(){
+  async function handleTurn(userText, meta = "Te") {
+    addMsg("me", userText, meta);
+    history.push({ role:"user", content: userText });
+
+    const answer = await think(userText);
+    if(!running) return { interruptedText: "" };
+
+    addMsg("ai", answer, activeRobotTitle || "Ari");
+    history.push({ role:"assistant", content: answer });
+
+    return ttsSpeak(answer, { allowBargeIn: true });
+  }
+
+  async function loop(seedText = ""){
     if(!running || busy) return;
     busy = true;
 
     try {
-      // 1) hallgat
-      const heard = await listenOnce();
-      if(!running){ busy=false; return; }
+      let currentInput = (seedText || "").trim();
 
-      if(!heard){
-        // csend → hallgasson tovább
-        busy = false;
-        setTimeout(loop, 200);
-        return;
+      while(running) {
+        if(!currentInput) {
+          // 1) hallgat
+          currentInput = await listenOnce();
+          if(!running){ busy=false; return; }
+
+          if(!currentInput){
+            silentTurns += 1;
+            if (silentTurns >= MAX_SILENT_TURNS) {
+              addMsg("ai", "Nem hallottam választ, ezért most leállok. Kattints újra egy robotra, ha folytatjuk.", "AIVIO");
+              stopAll();
+              return;
+            }
+            // csend → hallgasson tovább
+            busy = false;
+            setTimeout(loop, 200);
+            return;
+          }
+        }
+
+        silentTurns = 0;
+
+        const spoken = await handleTurn(currentInput, currentInput === seedText && seedText ? "Te (félbeszakítás)" : "Te");
+        if(!running){ busy=false; return; }
+
+        // user beleszólt az AI mondatába -> azonnal hallgatjuk a mondatát
+        if(spoken?.interrupted) {
+          const interruptedHeard = await listenOnce();
+          currentInput = interruptedHeard || "";
+          continue;
+        }
+
+        break;
       }
-
-      addMsg("me", heard, "Te");
-      history.push({ role:"user", content: heard });
-
-      // 2) gondolkodik
-      const answer = await think(heard);
-      if(!running){ busy=false; return; }
-
-      // 3) válasz
-      addMsg("ai", answer, activeRobotTitle || "Ari");
-      history.push({ role:"assistant", content: answer });
-
-      // 4) beszél
-      await ttsSpeak(answer);
 
       // 5) újra
       busy = false;
@@ -347,6 +481,7 @@
     setStatus("ok", "RUNNING");
     running = true;
     busy = false;
+    silentTurns = 0;
 
     // intro chat + hang
     addMsg("ai", intro, robotTitle);
@@ -384,7 +519,12 @@
       const answer = await think(v);
       addMsg("ai", answer, activeRobotTitle || "Ari");
       history.push({ role:"assistant", content: answer });
-      await ttsSpeak(answer);
+      const spoken = await ttsSpeak(answer, { allowBargeIn: true });
+      if (spoken?.interrupted) {
+        const interruptedHeard = await listenOnce();
+        loop(interruptedHeard || "");
+        return;
+      }
     }catch(err){
       addMsg("ai", err.message || String(err), "Hiba");
     }
@@ -393,6 +533,8 @@
   function stopAll(){
     running = false;
     busy = false;
+    stopActiveAudio();
+    silentTurns = 0;
     setLoopState("IDLE");
     setStatus("ok", "IDLE");
     try { if(rec) rec.abort(); } catch(e){}
