@@ -36,6 +36,7 @@
       <div>
         <h1 class="title">Robot CMS</h1>
         <div class="muted">Robotonként állítható szöveg, stílus, script és tudásanyag + Odoo szinkron napló.</div>
+        <div class="muted" id="storageInfo">Storage: betöltés...</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn" href="/">← Vissza a főoldalra</a>
@@ -118,6 +119,12 @@ function formatDate(iso){
 async function loadCms(){
   const data = await fetch('/api/cms/robots').then(r=>r.json());
   robots = data.robots || [];
+
+  const st = data.storage || {};
+  const base = `Storage: ${st.activeStorage || 'ismeretlen'} (provider: ${st.provider || 'n/a'})`;
+  const extra = st.firestoreLastError ? ` • Firestore hiba: ${st.firestoreLastError}` : '';
+  byId('storageInfo').textContent = base + extra;
+
   renderRobotList();
   renderSyncLog(data.syncLog || []);
   if(!activeKey && robots[0]) setActive(robots[0].key);
