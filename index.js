@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_phase1_cms_persistence_status_2026_02_15";
+const REV = "rev_phase1_cms_datastore_fallback_2026_02_15";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -32,10 +32,19 @@ const CMS_STORAGE_PROVIDER = (process.env.CMS_STORAGE_PROVIDER || "auto").toLowe
 let firestoreDb = null;
 let firestoreInitAttempted = false;
 let firestoreLastError = null;
+let datastoreClient = null;
+let datastoreInitAttempted = false;
+let datastoreLastError = null;
 
 function shouldUseFirestore() {
-  if (CMS_STORAGE_PROVIDER === "file" || CMS_STORAGE_PROVIDER === "json") return false;
+  if (CMS_STORAGE_PROVIDER === "file" || CMS_STORAGE_PROVIDER === "json" || CMS_STORAGE_PROVIDER === "datastore") return false;
   if (CMS_STORAGE_PROVIDER === "firestore") return true;
+  return !!process.env.GOOGLE_CLOUD_PROJECT;
+}
+
+function shouldUseDatastore() {
+  if (CMS_STORAGE_PROVIDER === "file" || CMS_STORAGE_PROVIDER === "json") return false;
+  if (CMS_STORAGE_PROVIDER === "datastore") return true;
   return !!process.env.GOOGLE_CLOUD_PROJECT;
 }
 
@@ -60,14 +69,48 @@ async function getFirestoreDb() {
 
 
 
+
+
+async function getDatastoreClient() {
+  if (datastoreClient) return datastoreClient;
+  if (datastoreInitAttempted) return null;
+  datastoreInitAttempted = true;
+
+  if (!shouldUseDatastore()) return null;
+
+  try {
+    const { Datastore } = await import("@google-cloud/datastore");
+    datastoreClient = new Datastore();
+    datastoreLastError = null;
+    return datastoreClient;
+  } catch (err) {
+    datastoreLastError = err?.message || String(err);
+    console.error("DATASTORE INIT ERROR:", datastoreLastError);
+    return null;
+  }
+}
+
+async function getCmsBackend() {
+  const fs = await getFirestoreDb();
+  if (fs) return { type: "firestore", client: fs };
+
+  const ds = await getDatastoreClient();
+  if (ds) return { type: "datastore", client: ds };
+
+  return { type: "file", client: null };
+}
+
 async function getCmsStorageInfo() {
-  const db = await getFirestoreDb();
+  const backend = await getCmsBackend();
   return {
     provider: CMS_STORAGE_PROVIDER,
     firestorePreferred: shouldUseFirestore(),
-    firestoreReady: !!db,
-    activeStorage: db ? "firestore" : "file",
-    firestoreLastError
+    firestoreReady: backend.type === "firestore",
+    firestoreLastError,
+    datastorePreferred: shouldUseDatastore(),
+    datastoreReady: backend.type === "datastore",
+    datastoreLastError,
+    activeStorage: backend.type
   };
 }
 function ensureDataFiles() {
@@ -167,72 +210,121 @@ Lépésről lépésre segíts.
 
 async function readCmsOverrides() {
   const localOverrides = readJsonObject(ROBOT_CMS_FILE);
-  const db = await getFirestoreDb();
-  if (!db) return localOverrides;
+  const backend = await getCmsBackend();
+
+  if (backend.type === "file") return localOverrides;
+
+  if (backend.type === "firestore") {
+    try {
+      const snap = await backend.client.collection("aivio_cms").doc("robot_overrides").get();
+
+      if (!snap.exists) {
+        if (Object.keys(localOverrides).length > 0) {
+          await backend.client.collection("aivio_cms").doc("robot_overrides").set({
+            overrides: localOverrides,
+            updatedAt: new Date().toISOString()
+          });
+        }
+        return localOverrides;
+      }
+
+      const data = snap.data() || {};
+      const remote = data.overrides && typeof data.overrides === "object" ? data.overrides : {};
+      return Object.keys(remote).length === 0 && Object.keys(localOverrides).length > 0 ? localOverrides : remote;
+    } catch (err) {
+      firestoreLastError = err?.message || String(err);
+      console.error("CMS READ ERROR:", firestoreLastError);
+      return localOverrides;
+    }
+  }
 
   try {
-    const snap = await db.collection("aivio_cms").doc("robot_overrides").get();
+    const key = backend.client.key(["AivioCmsConfig", "robot_overrides"]);
+    const [entity] = await backend.client.get(key);
 
-    if (!snap.exists) {
+    if (!entity) {
       if (Object.keys(localOverrides).length > 0) {
-        await db.collection("aivio_cms").doc("robot_overrides").set({
-          overrides: localOverrides,
-          updatedAt: new Date().toISOString()
+        await backend.client.save({
+          key,
+          data: { overrides: localOverrides, updatedAt: new Date().toISOString() },
+          excludeFromIndexes: ["overrides"]
         });
       }
       return localOverrides;
     }
 
-    const data = snap.data() || {};
-    const remote = data.overrides && typeof data.overrides === "object" ? data.overrides : {};
-
-    if (Object.keys(remote).length === 0 && Object.keys(localOverrides).length > 0) {
-      return localOverrides;
-    }
-
-    return remote;
+    const remote = entity.overrides && typeof entity.overrides === "object" ? entity.overrides : {};
+    return Object.keys(remote).length === 0 && Object.keys(localOverrides).length > 0 ? localOverrides : remote;
   } catch (err) {
-    firestoreLastError = err?.message || String(err);
-    console.error("CMS READ ERROR:", firestoreLastError);
+    datastoreLastError = err?.message || String(err);
+    console.error("CMS READ ERROR (DATASTORE):", datastoreLastError);
     return localOverrides;
   }
 }
 
 async function writeCmsOverrides(overrides) {
-  const db = await getFirestoreDb();
+  const backend = await getCmsBackend();
 
   writeJsonObject(ROBOT_CMS_FILE, overrides);
 
-  if (!db) return;
+  if (backend.type === "file") return;
+
+  if (backend.type === "firestore") {
+    try {
+      await backend.client.collection("aivio_cms").doc("robot_overrides").set({
+        overrides,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      firestoreLastError = err?.message || String(err);
+      console.error("CMS WRITE ERROR:", firestoreLastError);
+    }
+    return;
+  }
+
   try {
-    await db.collection("aivio_cms").doc("robot_overrides").set({
-      overrides,
-      updatedAt: new Date().toISOString()
+    const key = backend.client.key(["AivioCmsConfig", "robot_overrides"]);
+    await backend.client.save({
+      key,
+      data: { overrides, updatedAt: new Date().toISOString() },
+      excludeFromIndexes: ["overrides"]
     });
   } catch (err) {
-    firestoreLastError = err?.message || String(err);
-    console.error("CMS WRITE ERROR:", firestoreLastError);
+    datastoreLastError = err?.message || String(err);
+    console.error("CMS WRITE ERROR (DATASTORE):", datastoreLastError);
   }
 }
 
 async function readCmsSyncLog(limit = 20) {
   const localRows = readJsonArray(ROBOT_CMS_SYNC_FILE).slice(-limit).reverse();
-  const db = await getFirestoreDb();
-  if (!db) return localRows;
+  const backend = await getCmsBackend();
+  if (backend.type === "file") return localRows;
+
+  if (backend.type === "firestore") {
+    try {
+      const snap = await backend.client
+        .collection("aivio_cms_sync_log")
+        .orderBy("updatedAt", "desc")
+        .limit(limit)
+        .get();
+
+      const rows = [];
+      snap.forEach((doc) => rows.push(doc.data()));
+      return rows.length > 0 ? rows : localRows;
+    } catch (err) {
+      firestoreLastError = err?.message || String(err);
+      console.error("CMS SYNC LOG READ ERROR:", firestoreLastError);
+      return localRows;
+    }
+  }
 
   try {
-    const snap = await db
-      .collection("aivio_cms_sync_log")
-      .orderBy("updatedAt", "desc")
-      .limit(limit)
-      .get();
-
-    const rows = [];
-    snap.forEach((doc) => rows.push(doc.data()));
-    return rows.length > 0 ? rows : localRows;
+    const query = backend.client.createQuery("AivioCmsSyncLog").order("updatedAt", { descending: true }).limit(limit);
+    const [rows] = await backend.client.runQuery(query);
+    return rows && rows.length > 0 ? rows : localRows;
   } catch (err) {
-    firestoreLastError = err?.message || String(err);
-    console.error("CMS SYNC LOG READ ERROR:", firestoreLastError);
+    datastoreLastError = err?.message || String(err);
+    console.error("CMS SYNC LOG READ ERROR (DATASTORE):", datastoreLastError);
     return localRows;
   }
 }
@@ -240,14 +332,29 @@ async function readCmsSyncLog(limit = 20) {
 async function appendCmsSyncLog(item) {
   appendJsonItem(ROBOT_CMS_SYNC_FILE, item);
 
-  const db = await getFirestoreDb();
-  if (!db) return;
+  const backend = await getCmsBackend();
+  if (backend.type === "file") return;
+
+  if (backend.type === "firestore") {
+    try {
+      await backend.client.collection("aivio_cms_sync_log").doc(String(item.id)).set(item);
+    } catch (err) {
+      firestoreLastError = err?.message || String(err);
+      console.error("CMS SYNC LOG WRITE ERROR:", firestoreLastError);
+    }
+    return;
+  }
 
   try {
-    await db.collection("aivio_cms_sync_log").doc(String(item.id)).set(item);
+    const key = backend.client.key(["AivioCmsSyncLog", String(item.id)]);
+    await backend.client.save({
+      key,
+      data: item,
+      excludeFromIndexes: ["odooSync.error"]
+    });
   } catch (err) {
-    firestoreLastError = err?.message || String(err);
-    console.error("CMS SYNC LOG WRITE ERROR:", firestoreLastError);
+    datastoreLastError = err?.message || String(err);
+    console.error("CMS SYNC LOG WRITE ERROR (DATASTORE):", datastoreLastError);
   }
 }
 

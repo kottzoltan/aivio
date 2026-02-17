@@ -122,8 +122,9 @@ async function loadCms(){
 
   const st = data.storage || {};
   const base = `Storage: ${st.activeStorage || 'ismeretlen'} (provider: ${st.provider || 'n/a'})`;
-  const extra = st.firestoreLastError ? ` • Firestore hiba: ${st.firestoreLastError}` : '';
-  byId('storageInfo').textContent = base + extra;
+  const fsErr = st.firestoreLastError ? ` • Firestore hiba: ${st.firestoreLastError}` : '';
+  const dsErr = st.datastoreLastError ? ` • Datastore hiba: ${st.datastoreLastError}` : '';
+  byId('storageInfo').textContent = base + fsErr + dsErr;
 
   renderRobotList();
   renderSyncLog(data.syncLog || []);
