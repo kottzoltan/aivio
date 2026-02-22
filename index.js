@@ -459,8 +459,11 @@ app.post("/think", async (req, res) => {
 
 app.post("/speak", async (req, res) => {
   try {
-    const { text, voiceId } = req.body;
+    const { text, voiceId, model_id } = req.body;
     if (!text || !voiceId) return res.status(400).send("Missing data");
+    if (!process.env.ELEVENLABS_API_KEY) {
+      return res.status(500).send("Missing ELEVENLABS_API_KEY");
+    }
 
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
@@ -471,9 +474,22 @@ app.post("/speak", async (req, res) => {
       },
       body: JSON.stringify({
         text,
-        model_id: "eleven_flash_v2_5"
+        model_id: model_id || "eleven_flash_v2_5"
       })
     });
+
+    if (!r.ok) {
+      const upstreamError = await r.text().catch(() => "");
+      console.error("SPEAK UPSTREAM ERROR:", r.status, upstreamError);
+      return res.status(502).send(`ElevenLabs error (${r.status})`);
+    }
+
+    const contentType = (r.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("audio")) {
+      const unexpected = await r.text().catch(() => "");
+      console.error("SPEAK INVALID CONTENT-TYPE:", contentType, unexpected);
+      return res.status(502).send("ElevenLabs did not return audio");
+    }
 
     const audioBuffer = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
