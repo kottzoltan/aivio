@@ -186,6 +186,8 @@
 
   let activeRobotKey = null;
   let activeRobotTitle = null;
+  let activeBargeInEnabled = true;
+  let activeBargeInSensitivity = 0.055;
   let running = false;
   let busy = false;
   let history = []; // {role:"user"/"assistant", content:"..."}
@@ -275,7 +277,11 @@
           }
           const rms = Math.sqrt(sum / data.length);
 
+<<<<<<< ours
           if (rms > 0.055) {
+=======
+          if (rms > activeBargeInSensitivity) {
+>>>>>>> theirs
             speechFrames += 1;
           } else {
             speechFrames = Math.max(0, speechFrames - 1);
@@ -374,7 +380,23 @@
 
     return new Promise((resolve, reject) => {
       let done = false;
+      let timeoutId = null;
 
+<<<<<<< ours
+=======
+      const finish = (value, isError = false) => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        if (activeRec === r) activeRec = null;
+        sttStartLocked = false;
+        r.onresult = null;
+        r.onerror = null;
+        r.onend = null;
+        if (isError) reject(value); else resolve(value);
+      };
+
+>>>>>>> theirs
       r.onresult = (ev) => {
         const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
         finish(text);
@@ -389,12 +411,27 @@
       };
       r.onend = () => {
         // ha end van, de nem jött result, az gyakran csend
-        if(done) return;
-        done = true;
-        resolve("");
+        finish("");
       };
 
-      try { r.start(); } catch(err){ reject(err); }
+      timeoutId = setTimeout(() => {
+        try { r.abort(); } catch(e) {}
+        finish("");
+      }, LISTEN_TIMEOUT_MS);
+
+      try {
+        r.start();
+      } catch(err){
+        const msg = err?.message || String(err);
+        if (msg.toLowerCase().includes("recognition has already started")) {
+          setTimeout(() => {
+            try { r.abort(); } catch(e) {}
+            finish("");
+          }, 120);
+          return;
+        }
+        finish(err, true);
+      }
     });
   }
 
@@ -415,7 +452,11 @@
     addMsg("ai", answer, activeRobotTitle || "Ari");
     history.push({ role:"assistant", content: answer });
 
+<<<<<<< ours
     return ttsSpeak(answer, { allowBargeIn: true });
+=======
+    return ttsSpeak(answer, { allowBargeIn: activeBargeInEnabled });
+>>>>>>> theirs
   }
 
   async function loop(seedText = ""){
@@ -474,12 +515,17 @@
     }
   }
 
-  async function startForRobot(robotKey, robotTitle, intro){
+  async function startForRobot(robotKey, robotTitle, intro, voiceSettings = {}){
     // UI highlight
     document.querySelectorAll(".card").forEach(c => c.classList.toggle("active", c.dataset.robot === robotKey));
 
     activeRobotKey = robotKey;
     activeRobotTitle = robotTitle;
+    activeBargeInEnabled = voiceSettings.voiceBargeInEnabled !== false;
+    const rawSensitivity = Number(voiceSettings.voiceBargeInSensitivity);
+    activeBargeInSensitivity = Number.isFinite(rawSensitivity)
+      ? Math.min(0.2, Math.max(0.02, rawSensitivity))
+      : 0.055;
 
     activeRobotEl.textContent = robotTitle;
     activeKeyEl.textContent = `(${robotKey})`;
@@ -494,7 +540,7 @@
     history = [{ role:"assistant", content: intro }];
 
     try {
-      await ttsSpeak(intro);
+      await ttsSpeak(intro, { allowBargeIn: activeBargeInEnabled });
     } catch(err){
       console.error(err);
       addMsg("ai", "Nem tudok beszélni (TTS hiba). Nézd a logot.", "Hiba");
@@ -525,7 +571,11 @@
       const answer = await think(v);
       addMsg("ai", answer, activeRobotTitle || "Ari");
       history.push({ role:"assistant", content: answer });
+<<<<<<< ours
       const spoken = await ttsSpeak(answer, { allowBargeIn: true });
+=======
+      const spoken = await ttsSpeak(answer, { allowBargeIn: activeBargeInEnabled });
+>>>>>>> theirs
       if (spoken?.interrupted) {
         const interruptedHeard = await listenOnce();
         loop(interruptedHeard || "");
@@ -578,7 +628,10 @@
       const title = item?.title || key;
       const intro = item?.intro || "Szia! Ari vagyok.";
       stopAll();
-      await startForRobot(key, title, intro);
+      await startForRobot(key, title, intro, {
+        voiceBargeInEnabled: item?.voiceBargeInEnabled,
+        voiceBargeInSensitivity: item?.voiceBargeInSensitivity
+      });
     }catch(err){
       addMsg("ai", "Nem érem el a /robots endpointot.", "Hiba");
     }
