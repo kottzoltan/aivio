@@ -337,12 +337,12 @@
 
   // ===== STT (Web Speech API) =====
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null;
+  let activeRec = null;
+  let sttStartLocked = false;
 
-  function ensureRec(){
+  function createRec(){
     if(!SpeechRecognition) return null;
-    if(rec) return rec;
-    rec = new SpeechRecognition();
+    const rec = new SpeechRecognition();
     rec.lang = "hu-HU";
     rec.interimResults = false;
     rec.maxAlternatives = 1;
@@ -350,21 +350,30 @@
   }
 
   async function listenOnce(){
-    const r = ensureRec();
-    if(!r) throw new Error("A böngésző nem támogatja a SpeechRecognition-t (Web Speech API). Próbáld Chrome-ban.");
+    if (sttStartLocked) return "";
+    sttStartLocked = true;
+
+    if (activeRec) {
+      try {
+        activeRec.onresult = null;
+        activeRec.onerror = null;
+        activeRec.onend = null;
+        activeRec.abort();
+      } catch(e) {}
+      activeRec = null;
+    }
+
+    const r = createRec();
+    if(!r) {
+      sttStartLocked = false;
+      throw new Error("A böngésző nem támogatja a SpeechRecognition-t (Web Speech API). Próbáld Chrome-ban.");
+    }
+    activeRec = r;
 
     setLoopState("LISTENING");
 
     return new Promise((resolve, reject) => {
       let done = false;
-      let timeoutId = null;
-
-      const finish = (value, isError = false) => {
-        if (done) return;
-        done = true;
-        if (timeoutId) clearTimeout(timeoutId);
-        if (isError) reject(value); else resolve(value);
-      };
 
       r.onresult = (ev) => {
         const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
@@ -380,15 +389,12 @@
       };
       r.onend = () => {
         // ha end van, de nem jött result, az gyakran csend
-        finish("");
+        if(done) return;
+        done = true;
+        resolve("");
       };
 
-      timeoutId = setTimeout(() => {
-        try { r.abort(); } catch(e) {}
-        finish("");
-      }, LISTEN_TIMEOUT_MS);
-
-      try { r.start(); } catch(err){ finish(err, true); }
+      try { r.start(); } catch(err){ reject(err); }
     });
   }
 
@@ -537,7 +543,9 @@
     silentTurns = 0;
     setLoopState("IDLE");
     setStatus("ok", "IDLE");
-    try { if(rec) rec.abort(); } catch(e){}
+    try { if(activeRec) activeRec.abort(); } catch(e){}
+    activeRec = null;
+    sttStartLocked = false;
   }
 
   // init: health + robots
