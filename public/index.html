@@ -277,11 +277,7 @@
           }
           const rms = Math.sqrt(sum / data.length);
 
-<<<<<<< ours
-          if (rms > 0.055) {
-=======
           if (rms > activeBargeInSensitivity) {
->>>>>>> theirs
             speechFrames += 1;
           } else {
             speechFrames = Math.max(0, speechFrames - 1);
@@ -382,8 +378,6 @@
       let done = false;
       let timeoutId = null;
 
-<<<<<<< ours
-=======
       const finish = (value, isError = false) => {
         if (done) return;
         done = true;
@@ -396,7 +390,6 @@
         if (isError) reject(value); else resolve(value);
       };
 
->>>>>>> theirs
       r.onresult = (ev) => {
         const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
         finish(text);
@@ -452,11 +445,7 @@
     addMsg("ai", answer, activeRobotTitle || "Ari");
     history.push({ role:"assistant", content: answer });
 
-<<<<<<< ours
-    return ttsSpeak(answer, { allowBargeIn: true });
-=======
     return ttsSpeak(answer, { allowBargeIn: activeBargeInEnabled });
->>>>>>> theirs
   }
 
   async function loop(seedText = ""){
@@ -571,11 +560,7 @@
       const answer = await think(v);
       addMsg("ai", answer, activeRobotTitle || "Ari");
       history.push({ role:"assistant", content: answer });
-<<<<<<< ours
-      const spoken = await ttsSpeak(answer, { allowBargeIn: true });
-=======
       const spoken = await ttsSpeak(answer, { allowBargeIn: activeBargeInEnabled });
->>>>>>> theirs
       if (spoken?.interrupted) {
         const interruptedHeard = await listenOnce();
         loop(interruptedHeard || "");

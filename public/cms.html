@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIVIO Robot CMS</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1220;color:#e7eefc}
+    .wrap{max-width:1200px;margin:0 auto;padding:22px}
+    .top{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+    .title{font-size:28px;font-weight:900;margin:0}
+    .muted{color:#9fb0d6}
+    .btn{padding:10px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#e7eefc;cursor:pointer}
+    .btn:hover{border-color:rgba(120,190,255,.45)}
+    .layout{display:grid;grid-template-columns:320px 1fr;gap:14px;margin-top:16px}
+    @media(max-width:980px){.layout{grid-template-columns:1fr}}
+    .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px}
+    .robot-item{padding:10px;border-radius:10px;border:1px solid transparent;cursor:pointer;margin-bottom:8px;background:rgba(255,255,255,.03)}
+    .robot-item.active{border-color:rgba(120,190,255,.55);background:rgba(90,160,255,.16)}
+    .robot-item small{display:block;color:#9fb0d6}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media(max-width:980px){.grid{grid-template-columns:1fr}}
+    input,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.2);color:#e7eefc}
+    textarea{min-height:120px;resize:vertical}
+    label{font-weight:700;font-size:13px;margin-top:8px;display:block}
+    .ok{color:#34d399}
+    .err{color:#fb7185}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;font-size:13px}
+    th{color:#9fb0d6}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1 class="title">Robot CMS</h1>
+        <div class="muted">Robotonként állítható szöveg, stílus, script és tudásanyag + Odoo szinkron napló.</div>
+        <div class="muted" id="storageInfo">Storage: betöltés...</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn" href="/">← Vissza a főoldalra</a>
+        <a class="btn" href="/crm-dashboard.html">CRM Dashboard</a>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <div style="font-weight:800;margin-bottom:10px">Robotok</div>
+        <div id="robotList"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+          <div>
+            <div id="activeName" style="font-weight:900;font-size:20px">—</div>
+            <small class="muted" id="activeMeta">—</small>
+          </div>
+          <div>
+            <label style="display:flex;gap:6px;align-items:center;font-weight:600">
+              <input id="syncToOdoo" type="checkbox" checked style="width:auto" />
+              Mentéskor Odoo szinkron
+            </label>
+          </div>
+        </div>
+
+        <div class="grid" style="margin-top:10px">
+          <div>
+            <label>Cím</label>
+            <input id="fTitle" />
+          </div>
+          <div>
+            <label>Intro (első mondat)</label>
+            <input id="fIntro" />
+          </div>
+        </div>
+
+        <label>Alap instrukció (system prompt)</label>
+        <textarea id="fPrompt"></textarea>
+
+        <label>Stílus útmutató</label>
+        <textarea id="fStyle"></textarea>
+
+        <label>Script / kötelező beszélgetési menet</label>
+        <textarea id="fScript"></textarea>
+
+        <label>Tudásanyag</label>
+        <textarea id="fKnowledge"></textarea>
+
+        <div class="grid" style="margin-top:10px">
+          <div>
+            <label style="display:flex;gap:6px;align-items:center;font-weight:600">
+              <input id="fBargeInEnabled" type="checkbox" checked style="width:auto" />
+              Barge-in engedélyezése (felhasználó beleszólhat)
+            </label>
+          </div>
+          <div>
+            <label>Mikrofon érzékenység (0.02 - 0.20)</label>
+            <input id="fBargeSensitivity" type="number" min="0.02" max="0.20" step="0.005" value="0.055" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <button class="btn" onclick="saveRobot()">Mentés</button>
+          <span id="saveStatus" class="muted">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div style="font-weight:800;margin-bottom:8px">Utolsó Odoo szinkronok</div>
+      <table>
+        <thead>
+          <tr><th>Idő</th><th>Robot</th><th>Eredmény</th><th>Részlet</th></tr>
+        </thead>
+        <tbody id="syncLog"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+let robots = [];
+let activeKey = null;
+
+function byId(id){ return document.getElementById(id); }
+
+function formatDate(iso){
+  if(!iso) return "—";
+  try { return new Date(iso).toLocaleString("hu-HU"); } catch { return iso; }
+}
+
+async function loadCms(){
+  const data = await fetch('/api/cms/robots').then(r=>r.json());
+  robots = data.robots || [];
+
+  const st = data.storage || {};
+  const base = `Storage: ${st.activeStorage || 'ismeretlen'} (provider: ${st.provider || 'n/a'})`;
+  const fsErr = st.firestoreLastError ? ` • Firestore hiba: ${st.firestoreLastError}` : '';
+  const dsErr = st.datastoreLastError ? ` • Datastore hiba: ${st.datastoreLastError}` : '';
+  byId('storageInfo').textContent = base + fsErr + dsErr;
+
+  renderRobotList();
+  renderSyncLog(data.syncLog || []);
+  if(!activeKey && robots[0]) setActive(robots[0].key);
+}
+
+function renderRobotList(){
+  const root = byId('robotList');
+  root.innerHTML = '';
+  robots.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'robot-item' + (r.key === activeKey ? ' active' : '');
+    div.innerHTML = `<b>${r.title}</b><small>${r.key}</small><small>Forrás: ${r.source === 'cms_override' ? 'CMS' : 'alap'}</small>`;
+    div.onclick = () => setActive(r.key);
+    root.appendChild(div);
+  });
+}
+
+async function setActive(key){
+  activeKey = key;
+  renderRobotList();
+  const r = await fetch(`/api/cms/robots/${key}`).then(x=>x.json());
+
+  byId('activeName').textContent = r.title || key;
+  byId('activeMeta').textContent = `Kulcs: ${key} • Frissítve: ${formatDate(r.updatedAt)} • Forrás: ${r.source}`;
+
+  byId('fTitle').value = r.title || '';
+  byId('fIntro').value = r.intro || '';
+  byId('fPrompt').value = r.systemPrompt || '';
+  byId('fStyle').value = r.styleGuide || '';
+  byId('fScript').value = r.script || '';
+  byId('fKnowledge').value = r.knowledgeBase || '';
+  byId('fBargeInEnabled').checked = r.voiceBargeInEnabled !== false;
+  byId('fBargeSensitivity').value = (typeof r.voiceBargeInSensitivity === 'number' ? r.voiceBargeInSensitivity : 0.055).toFixed(3);
+}
+
+function renderSyncLog(rows){
+  const tb = byId('syncLog');
+  tb.innerHTML = '';
+  rows.forEach(item => {
+    const tr = document.createElement('tr');
+    const sync = item.odooSync || {};
+    const status = sync.attempted ? (sync.ok ? '<span class="ok">Sikeres</span>' : '<span class="err">Hiba</span>') : '<span class="muted">Kihagyva</span>';
+    const detail = sync.ok ? `Lead ID: ${sync.leadId}` : (sync.error || '—');
+    tr.innerHTML = `<td>${formatDate(item.updatedAt)}</td><td>${item.robotKey}</td><td>${status}</td><td>${detail}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function saveRobot(){
+  if(!activeKey) return;
+  byId('saveStatus').textContent = 'Mentés folyamatban...';
+
+  const payload = {
+    title: byId('fTitle').value,
+    intro: byId('fIntro').value,
+    systemPrompt: byId('fPrompt').value,
+    styleGuide: byId('fStyle').value,
+    script: byId('fScript').value,
+    knowledgeBase: byId('fKnowledge').value,
+    voiceBargeInEnabled: byId('fBargeInEnabled').checked,
+    voiceBargeInSensitivity: Number(byId('fBargeSensitivity').value || 0.055),
+    syncToOdoo: byId('syncToOdoo').checked
+  };
+
+  const resp = await fetch(`/api/cms/robots/${activeKey}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await resp.json();
+  if(!resp.ok){
+    byId('saveStatus').innerHTML = `<span class="err">Mentési hiba: ${data.error || 'ismeretlen'}</span>`;
+    return;
+  }
+
+  if(data.odooSync?.attempted && data.odooSync?.ok){
+    byId('saveStatus').innerHTML = `<span class="ok">Mentve + Odoo szinkron sikeres (Lead ID: ${data.odooSync.leadId})</span>`;
+  } else if (data.odooSync?.attempted) {
+    byId('saveStatus').innerHTML = `<span class="err">Mentve, de Odoo szinkron hiba: ${data.odooSync.error || 'ismeretlen'}</span>`;
+  } else {
+    byId('saveStatus').textContent = 'Mentve (Odoo szinkron kikapcsolva).';
+  }
+
+  await loadCms();
+  await setActive(activeKey);
+}
+
+loadCms();
+</script>
+</body>
+</html>

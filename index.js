@@ -358,8 +358,6 @@ async function appendCmsSyncLog(item) {
   }
 }
 
-<<<<<<< ours
-=======
 
 function normalizeVoiceSettings(cms = {}) {
   const enabled = cms.voiceBargeInEnabled;
@@ -374,17 +372,13 @@ function normalizeVoiceSettings(cms = {}) {
   };
 }
 
->>>>>>> theirs
 function getRobotConfigFromOverrides(robotKey, overrides = {}) {
   const base = ROBOTS[robotKey];
   if (!base) return null;
 
   const cms = overrides[robotKey] || {};
-<<<<<<< ours
-=======
   const voice = normalizeVoiceSettings(cms);
 
->>>>>>> theirs
   return {
     key: robotKey,
     title: String(cms.title || base.title),
@@ -393,11 +387,8 @@ function getRobotConfigFromOverrides(robotKey, overrides = {}) {
     styleGuide: String(cms.styleGuide || ""),
     script: String(cms.script || ""),
     knowledgeBase: String(cms.knowledgeBase || ""),
-<<<<<<< ours
-=======
     voiceBargeInEnabled: voice.bargeInEnabled,
     voiceBargeInSensitivity: voice.bargeInSensitivity,
->>>>>>> theirs
     updatedAt: cms.updatedAt || null,
     source: cms.updatedAt ? "cms_override" : "default"
   };
@@ -438,13 +429,9 @@ app.get("/robots", async (req, res) => {
       title: cfg.title,
       intro: cfg.intro,
       source: cfg.source,
-<<<<<<< ours
-      updatedAt: cfg.updatedAt
-=======
       updatedAt: cfg.updatedAt,
       voiceBargeInEnabled: cfg.voiceBargeInEnabled,
       voiceBargeInSensitivity: cfg.voiceBargeInSensitivity
->>>>>>> theirs
     };
   });
   res.json({ robots: list });
@@ -578,7 +565,6 @@ async function odooLogin() {
         service: "common",
         method: "login",
         args: [process.env.ODOO_DB, process.env.ODOO_USER, process.env.ODOO_API_KEY]
-<<<<<<< ours
       },
       id: Date.now()
     })
@@ -613,51 +599,12 @@ async function odooExecute(uid, model, method, args = [], kwargs = {}) {
         service: "object",
         method: "execute_kw",
         args: [process.env.ODOO_DB, uid, process.env.ODOO_API_KEY, model, method, args, kwargs]
-=======
->>>>>>> theirs
       },
       id: Date.now()
     })
   });
 
   const data = await r.json();
-<<<<<<< ours
-=======
-
-  if (data?.error) {
-    throw new Error(`Odoo login hiba: ${parseOdooErrorMessage(JSON.stringify(data))}`);
-  }
-
-  const uid = data?.result;
-  if (!uid) {
-    throw new Error("Odoo login sikertelen: nincs UID. Ellenőrizd az ODOO_DB / ODOO_USER / ODOO_API_KEY értékeket.");
-  }
-
-  return Number(uid);
-}
-
-async function odooExecute(uid, model, method, args = [], kwargs = {}) {
-  if (!uid) {
-    throw new Error("Odoo művelet megszakítva: hiányzó UID (login sikertelen).");
-  }
-
-  const r = await fetch(`${process.env.ODOO_URL}/jsonrpc`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "call",
-      params: {
-        service: "object",
-        method: "execute_kw",
-        args: [process.env.ODOO_DB, uid, process.env.ODOO_API_KEY, model, method, args, kwargs]
-      },
-      id: Date.now()
-    })
-  });
-
-  const data = await r.json();
->>>>>>> theirs
   if (data.error) throw new Error(parseOdooErrorMessage(JSON.stringify(data)));
   return data.result;
 }
@@ -758,7 +705,6 @@ async function postProcess(robot, text, aiText) {
           description: text
         }]]);
       }
-<<<<<<< ours
 
       if (structured.appointmentIsoUtc) {
         const start = new Date(structured.appointmentIsoUtc);
@@ -771,20 +717,6 @@ async function postProcess(robot, text, aiText) {
           stop: stop.toISOString().slice(0, 19).replace("T", " ")
         }]]);
 
-=======
-
-      if (structured.appointmentIsoUtc) {
-        const start = new Date(structured.appointmentIsoUtc);
-        const stop = new Date(start.getTime() + 60 * 60 * 1000);
-
-        const calendarId = await odooExecute(uid, "calendar.event", "create", [[{
-          name: "AI Sales Meeting",
-          description: text,
-          start: start.toISOString().slice(0, 19).replace("T", " "),
-          stop: stop.toISOString().slice(0, 19).replace("T", " ")
-        }]]);
-
->>>>>>> theirs
         appendJsonItem(APPOINTMENTS_FILE, {
           id: Date.now(),
           robot,
@@ -1033,25 +965,19 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       styleGuide = "",
       script = "",
       knowledgeBase = "",
-<<<<<<< ours
-=======
       voiceBargeInEnabled = true,
       voiceBargeInSensitivity = 0.055,
->>>>>>> theirs
       syncToOdoo = true
     } = req.body || {};
 
     const overrides = await readCmsOverrides();
     const updatedAt = new Date().toISOString();
 
-<<<<<<< ours
-=======
     const voice = normalizeVoiceSettings({
       voiceBargeInEnabled,
       voiceBargeInSensitivity
     });
 
->>>>>>> theirs
     overrides[robotKey] = {
       title: String(title || base.title).trim(),
       intro: String(intro || base.intro).trim(),
@@ -1059,11 +985,8 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       styleGuide: String(styleGuide || "").trim(),
       script: String(script || "").trim(),
       knowledgeBase: String(knowledgeBase || "").trim(),
-<<<<<<< ours
-=======
       voiceBargeInEnabled: voice.bargeInEnabled,
       voiceBargeInSensitivity: voice.bargeInSensitivity,
->>>>>>> theirs
       updatedAt
     };
 
@@ -1094,15 +1017,11 @@ app.put("/api/cms/robots/:key", async (req, res) => {
             cfg.script || "(üres)",
             "",
             "Knowledge base:",
-<<<<<<< ours
-            cfg.knowledgeBase || "(üres)"
-=======
             cfg.knowledgeBase || "(üres)",
             "",
             "Voice settings:",
             `Barge-in enabled: ${cfg.voiceBargeInEnabled ? "igen" : "nem"}`,
             `Barge-in sensitivity: ${cfg.voiceBargeInSensitivity}`
->>>>>>> theirs
           ].join("\n")
         }]]);
 
