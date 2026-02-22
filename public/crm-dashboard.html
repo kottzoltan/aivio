@@ -33,7 +33,7 @@
         <div class="h1">AIVIO CRM – Dashboard</div>
         <div class="muted">Odoo CRM adatok, AIVIO felületen</div>
       </div>
-      <button class="btn" onclick="loadAll()">Frissítés</button>
+      <div style="display:flex;gap:8px;align-items:center"><span class="muted" id="lastRefresh">—</span><button class="btn" onclick="loadAll()">Frissítés</button></div>
     </div>
 
     <div class="grid">
@@ -118,9 +118,11 @@ async function loadRecent(){
 
 async function loadAll(){
   await Promise.all([loadPipeline(), loadRecent()]);
+  document.getElementById("lastRefresh").textContent = `Frissítve: ${new Date().toLocaleTimeString("hu-HU")}`;
 }
 
 loadAll();
+setInterval(loadAll, 30000);
 </script>
 </body>
 </html>
