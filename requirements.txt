@@ -1,0 +1,7 @@
+# List of Python Dependencies
+
+fastapi
+uvicorn
+pydantic
+odoorpc
+python-dotenv
