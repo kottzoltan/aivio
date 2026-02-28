@@ -70,6 +70,10 @@
             <input id="fTitle" />
           </div>
           <div>
+            <label>Robot neve (persona)</label>
+            <input id="fName" />
+          </div>
+          <div>
             <label>Intro (első mondat)</label>
             <input id="fIntro" />
           </div>
@@ -152,6 +156,7 @@ async function setActive(key){
   byId('activeMeta').textContent = `Kulcs: ${key} • Frissítve: ${formatDate(r.updatedAt)} • Forrás: ${r.source}`;
 
   byId('fTitle').value = r.title || '';
+  byId('fName').value = r.name || '';
   byId('fIntro').value = r.intro || '';
   byId('fPrompt').value = r.systemPrompt || '';
   byId('fStyle').value = r.styleGuide || '';
@@ -178,6 +183,7 @@ async function saveRobot(){
 
   const payload = {
     title: byId('fTitle').value,
+    name: byId('fName').value,
     intro: byId('fIntro').value,
     systemPrompt: byId('fPrompt').value,
     styleGuide: byId('fStyle').value,
