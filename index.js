@@ -178,8 +178,9 @@ app.get("/health", (req, res) => {
 const ROBOTS = {
   outbound_sales: {
     title: "AI Sales Megoldás",
+    name: "Ari",
     intro: "Szia! Ari vagyok, AI sales specialista.",
-    systemPrompt: `Te egy profi AI értékesítési asszisztens vagy, aki kimenő értékesítési hívásokat vezet le. A neved Ari.
+    systemPrompt: `Te egy profi AI értékesítési asszisztens vagy, aki kimenő értékesítési hívásokat vezet le.
 
 CÉLOD: Felmérni az ügyfél igényeit, bemutatni az értékajánlatot, és időpontot egyeztetni egy részletes bemutatóra.
 
@@ -226,8 +227,9 @@ BESZÉLGETÉS MENETE (kövesd ezt a sorrendet):
   },
   email_sales: {
     title: "Időpontfoglalás",
+    name: "Ava",
     intro: "Szia! Ava vagyok, segítek időpontot foglalni.",
-    systemPrompt: `Te egy profi AI asszisztens vagy, aki e-mail alapú értékesítési folyamatokat és időpontfoglalást kezel. A neved Ava.
+    systemPrompt: `Te egy profi AI asszisztens vagy, aki e-mail alapú értékesítési folyamatokat és időpontfoglalást kezel.
 
 CÉLOD: Az érdeklődőt végigvezetni az időpontfoglalás folyamatán, összegyűjteni a szükséges adatokat, és megerősíteni a találkozót.
 
@@ -267,8 +269,9 @@ BESZÉLGETÉS MENETE (kövesd ezt a sorrendet):
   },
   support_inbound: {
     title: "Ügyfélszolgálat",
+    name: "Alex",
     intro: "Szia! Alex vagyok, segítek megoldani a problémát.",
-    systemPrompt: `Te egy empatikus és hozzáértő AI ügyfélszolgálati asszisztens vagy. A neved Alex.
+    systemPrompt: `Te egy empatikus és hozzáértő AI ügyfélszolgálati asszisztens vagy.
 
 CÉLOD: Az ügyfél problémájának gyors és hatékony megoldása, miközben pozitív ügyfélélményt nyújtasz.
 
@@ -312,8 +315,9 @@ BESZÉLGETÉS MENETE (kövesd ezt a sorrendet):
   },
   customer_satisfaction: {
     title: "Elégedettségmérés",
+    name: "Sam",
     intro: "Szia! Sam vagyok, néhány rövid kérdésem lenne.",
-    systemPrompt: `Te egy profi AI ügyfél-elégedettségmérő asszisztens vagy. A neved Sam.
+    systemPrompt: `Te egy profi AI ügyfél-elégedettségmérő asszisztens vagy.
 
 CÉLOD: Strukturált, NPS-alapú elégedettségi felmérés lebonyolítása, értékes visszajelzések gyűjtése.
 
@@ -514,6 +518,7 @@ function getRobotConfigFromOverrides(robotKey, overrides = {}) {
   return {
     key: robotKey,
     title: String(cms.title || base.title),
+    name: String(cms.name || base.name),
     intro: String(cms.intro || base.intro),
     systemPrompt: String(cms.systemPrompt || base.systemPrompt),
     styleGuide: String(cms.styleGuide || ""),
@@ -530,7 +535,7 @@ async function getRobotConfig(robotKey) {
 }
 
 function buildRobotSystemPrompt(cfg) {
-  const parts = [cfg.systemPrompt.trim()];
+  const parts = [`A te neved: ${cfg.name}.`, cfg.systemPrompt.trim()];
 
   if (cfg.styleGuide?.trim()) {
     parts.push(`STÍLUS ÚTMUTATÓ:
@@ -1088,6 +1093,7 @@ app.put("/api/cms/robots/:key", async (req, res) => {
 
     const {
       title = "",
+      name = "",
       intro = "",
       systemPrompt = "",
       styleGuide = "",
@@ -1101,6 +1107,7 @@ app.put("/api/cms/robots/:key", async (req, res) => {
 
     overrides[robotKey] = {
       title: String(title || base.title).trim(),
+      name: String(name || base.name).trim(),
       intro: String(intro || base.intro).trim(),
       systemPrompt: String(systemPrompt || base.systemPrompt).trim(),
       styleGuide: String(styleGuide || "").trim(),
