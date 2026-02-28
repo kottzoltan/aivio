@@ -914,6 +914,126 @@ app.get("/api/crm/pipeline", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////////
+// ODOO COMPANIES (RES.PARTNER) + APPOINTMENTS
+//////////////////////////////////////////////////////////
+
+app.get("/api/crm/companies", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+    const domain = [
+      "|",
+      ["is_company", "=", true],
+      ["company_type", "=", "company"]
+    ];
+    const companies = await odooExecute(uid, "res.partner", "search_read", [domain], {
+      fields: ["id", "name", "email", "phone", "mobile", "street", "city", "country_id"],
+      limit: 200,
+      order: "name asc"
+    });
+    res.json(companies);
+  } catch (err) {
+    console.error("CRM COMPANIES ERROR:", err);
+    res.status(500).json({ error: "Companies failed" });
+  }
+});
+
+app.post("/api/crm/companies", async (req, res) => {
+  try {
+    const { name, email, phone, mobile, street, city, countryId } = req.body || {};
+    if (!name) return res.status(400).json({ error: "Missing name" });
+
+    const uid = await odooLogin();
+    const vals = {
+      name: String(name),
+      is_company: true
+    };
+
+    if (email) vals.email = String(email);
+    if (phone) vals.phone = String(phone);
+    if (mobile) vals.mobile = String(mobile);
+    if (street) vals.street = String(street);
+    if (city) vals.city = String(city);
+    if (countryId) vals.country_id = Number(countryId);
+
+    const partnerId = await odooExecute(uid, "res.partner", "create", [[vals]]);
+    res.json({ ok: true, id: partnerId });
+  } catch (err) {
+    console.error("CRM COMPANIES CREATE ERROR:", err);
+    res.status(500).json({ error: "Company create failed" });
+  }
+});
+
+app.put("/api/crm/companies/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid id" });
+
+    const { name, email, phone, mobile, street, city, countryId } = req.body || {};
+    const vals = {};
+
+    if (name !== undefined) vals.name = String(name);
+    if (email !== undefined) vals.email = String(email);
+    if (phone !== undefined) vals.phone = String(phone);
+    if (mobile !== undefined) vals.mobile = String(mobile);
+    if (street !== undefined) vals.street = String(street);
+    if (city !== undefined) vals.city = String(city);
+    if (countryId !== undefined) vals.country_id = Number(countryId);
+
+    if (Object.keys(vals).length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    const uid = await odooLogin();
+    await odooExecute(uid, "res.partner", "write", [[id], vals]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("CRM COMPANIES UPDATE ERROR:", err);
+    res.status(500).json({ error: "Company update failed" });
+  }
+});
+
+app.get("/api/crm/appointments", async (req, res) => {
+  try {
+    const uid = await odooLogin();
+    const events = await odooExecute(uid, "calendar.event", "search_read", [[]], {
+      fields: ["id", "name", "start", "stop", "partner_ids"],
+      limit: 200,
+      order: "start desc"
+    });
+    res.json(events);
+  } catch (err) {
+    console.error("CRM APPOINTMENTS ERROR:", err);
+    res.status(500).json({ error: "Appointments failed" });
+  }
+});
+
+app.post("/api/crm/appointments", async (req, res) => {
+  try {
+    const { name, start, stop, partnerId } = req.body || {};
+    if (!name || !start || !stop) {
+      return res.status(400).json({ error: "Missing name, start or stop" });
+    }
+
+    const uid = await odooLogin();
+    const vals = {
+      name: String(name),
+      start: String(start),
+      stop: String(stop)
+    };
+
+    if (partnerId) {
+      vals.partner_ids = [[6, 0, [Number(partnerId)]]];
+    }
+
+    const eventId = await odooExecute(uid, "calendar.event", "create", [[vals]]);
+    res.json({ ok: true, id: eventId });
+  } catch (err) {
+    console.error("CRM APPOINTMENTS CREATE ERROR:", err);
+    res.status(500).json({ error: "Appointment create failed" });
+  }
+});
+
+//////////////////////////////////////////////////////////
 // CMS API (ROBOT INSTRUKCIÓ + ODOO SZINKRON)
 //////////////////////////////////////////////////////////
 
@@ -1020,9 +1140,66 @@ app.put("/api/cms/robots/:key", async (req, res) => {
 });
 
 //////////////////////////////////////////////////////////
+// GCP SECRET MANAGER – env változók betöltése
+//////////////////////////////////////////////////////////
+
+const SECRET_NAMES = [
+  "OPENAI_API_KEY",
+  "OPENAI_MODEL",
+  "ELEVENLABS_API_KEY",
+  "ODOO_URL",
+  "ODOO_DB",
+  "ODOO_USER",
+  "ODOO_API_KEY",
+  "CMS_STORAGE_PROVIDER"
+];
+
+async function loadEnvFromSecretManager() {
+  let projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+  if (!projectId && process.env.K_SERVICE) {
+    try {
+      const r = await fetch("http://metadata.google.internal/computeMetadata/v1/project/project-id", {
+        headers: { "Metadata-Flavor": "Google" }
+      });
+      if (r.ok) projectId = await r.text();
+    } catch (_) {}
+  }
+  if (!projectId) return;
+
+  try {
+    const { SecretManagerServiceClient } = await import("@google-cloud/secret-manager");
+    const client = new SecretManagerServiceClient();
+
+    for (const name of SECRET_NAMES) {
+      if (process.env[name]) continue;
+      try {
+        const [version] = await client.accessSecretVersion({
+          name: `projects/${projectId}/secrets/${name}/versions/latest`
+        });
+        const payload = version.payload?.data;
+        if (payload) {
+          process.env[name] = Buffer.from(payload).toString("utf8").trim();
+          console.log(`[Secret Manager] ${name} betöltve`);
+        }
+      } catch (e) {
+        if (e?.code !== 5) console.warn(`[Secret Manager] ${name}: ${e?.message || e}`);
+      }
+    }
+  } catch (err) {
+    console.warn("[Secret Manager] Init hiba (kihagyva):", err?.message || err);
+  }
+}
+
+//////////////////////////////////////////////////////////
 // START SERVER
 //////////////////////////////////////////////////////////
 
-app.listen(PORT, () => {
-  console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
+(async () => {
+  await loadEnvFromSecretManager();
+  app.listen(PORT, () => {
+    console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
+  });
+})().catch((err) => {
+  console.error("Indítási hiba:", err);
+  process.exit(1);
 });
