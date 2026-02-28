@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_stt_lock_and_retry_2026_02_16";
+const REV = "rev_odoo_crm_secret_manager_2026_02_24";
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
