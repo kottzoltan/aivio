@@ -358,11 +358,27 @@ async function appendCmsSyncLog(item) {
   }
 }
 
+
+function normalizeVoiceSettings(cms = {}) {
+  const enabled = cms.voiceBargeInEnabled;
+  const rawSensitivity = Number(cms.voiceBargeInSensitivity);
+  const sensitivity = Number.isFinite(rawSensitivity)
+    ? Math.min(0.2, Math.max(0.02, rawSensitivity))
+    : 0.055;
+
+  return {
+    bargeInEnabled: enabled === undefined ? true : Boolean(enabled),
+    bargeInSensitivity: sensitivity
+  };
+}
+
 function getRobotConfigFromOverrides(robotKey, overrides = {}) {
   const base = ROBOTS[robotKey];
   if (!base) return null;
 
   const cms = overrides[robotKey] || {};
+  const voice = normalizeVoiceSettings(cms);
+
   return {
     key: robotKey,
     title: String(cms.title || base.title),
@@ -371,6 +387,8 @@ function getRobotConfigFromOverrides(robotKey, overrides = {}) {
     styleGuide: String(cms.styleGuide || ""),
     script: String(cms.script || ""),
     knowledgeBase: String(cms.knowledgeBase || ""),
+    voiceBargeInEnabled: voice.bargeInEnabled,
+    voiceBargeInSensitivity: voice.bargeInSensitivity,
     updatedAt: cms.updatedAt || null,
     source: cms.updatedAt ? "cms_override" : "default"
   };
@@ -411,7 +429,9 @@ app.get("/robots", async (req, res) => {
       title: cfg.title,
       intro: cfg.intro,
       source: cfg.source,
-      updatedAt: cfg.updatedAt
+      updatedAt: cfg.updatedAt,
+      voiceBargeInEnabled: cfg.voiceBargeInEnabled,
+      voiceBargeInSensitivity: cfg.voiceBargeInSensitivity
     };
   });
   res.json({ robots: list });
@@ -1065,11 +1085,18 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       styleGuide = "",
       script = "",
       knowledgeBase = "",
+      voiceBargeInEnabled = true,
+      voiceBargeInSensitivity = 0.055,
       syncToOdoo = true
     } = req.body || {};
 
     const overrides = await readCmsOverrides();
     const updatedAt = new Date().toISOString();
+
+    const voice = normalizeVoiceSettings({
+      voiceBargeInEnabled,
+      voiceBargeInSensitivity
+    });
 
     overrides[robotKey] = {
       title: String(title || base.title).trim(),
@@ -1078,6 +1105,8 @@ app.put("/api/cms/robots/:key", async (req, res) => {
       styleGuide: String(styleGuide || "").trim(),
       script: String(script || "").trim(),
       knowledgeBase: String(knowledgeBase || "").trim(),
+      voiceBargeInEnabled: voice.bargeInEnabled,
+      voiceBargeInSensitivity: voice.bargeInSensitivity,
       updatedAt
     };
 
@@ -1108,7 +1137,11 @@ app.put("/api/cms/robots/:key", async (req, res) => {
             cfg.script || "(üres)",
             "",
             "Knowledge base:",
-            cfg.knowledgeBase || "(üres)"
+            cfg.knowledgeBase || "(üres)",
+            "",
+            "Voice settings:",
+            `Barge-in enabled: ${cfg.voiceBargeInEnabled ? "igen" : "nem"}`,
+            `Barge-in sensitivity: ${cfg.voiceBargeInSensitivity}`
           ].join("\n")
         }]]);
 

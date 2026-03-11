@@ -87,6 +87,19 @@
         <label>Tudásanyag</label>
         <textarea id="fKnowledge"></textarea>
 
+        <div class="grid" style="margin-top:10px">
+          <div>
+            <label style="display:flex;gap:6px;align-items:center;font-weight:600">
+              <input id="fBargeInEnabled" type="checkbox" checked style="width:auto" />
+              Barge-in engedélyezése (felhasználó beleszólhat)
+            </label>
+          </div>
+          <div>
+            <label>Mikrofon érzékenység (0.02 - 0.20)</label>
+            <input id="fBargeSensitivity" type="number" min="0.02" max="0.20" step="0.005" value="0.055" />
+          </div>
+        </div>
+
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
           <button class="btn" onclick="saveRobot()">Mentés</button>
           <span id="saveStatus" class="muted">—</span>
@@ -157,6 +170,8 @@ async function setActive(key){
   byId('fStyle').value = r.styleGuide || '';
   byId('fScript').value = r.script || '';
   byId('fKnowledge').value = r.knowledgeBase || '';
+  byId('fBargeInEnabled').checked = r.voiceBargeInEnabled !== false;
+  byId('fBargeSensitivity').value = (typeof r.voiceBargeInSensitivity === 'number' ? r.voiceBargeInSensitivity : 0.055).toFixed(3);
 }
 
 function renderSyncLog(rows){
@@ -183,6 +198,8 @@ async function saveRobot(){
     styleGuide: byId('fStyle').value,
     script: byId('fScript').value,
     knowledgeBase: byId('fKnowledge').value,
+    voiceBargeInEnabled: byId('fBargeInEnabled').checked,
+    voiceBargeInSensitivity: Number(byId('fBargeSensitivity').value || 0.055),
     syncToOdoo: byId('syncToOdoo').checked
   };
 
