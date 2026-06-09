@@ -187,6 +187,7 @@
 
   let activeRobotKey = null;
   let activeRobotTitle = null;
+  let sessionId = null;
   let running = false;
   let busy = false;
   let history = []; // {role:"user"/"assistant", content:"..."}
@@ -429,7 +430,8 @@
 
   async function think(text){
     setLoopState("THINKING");
-    const data = await apiJSON("/think", { text, robot: activeRobotKey, history });
+    const data = await apiJSON("/think", { text, robot: activeRobotKey, history, sessionId });
+    if (data.sessionId) sessionId = data.sessionId;
     return data.text || "";
   }
 
@@ -509,6 +511,7 @@
 
     activeRobotKey = robotKey;
     activeRobotTitle = robotTitle;
+    sessionId = crypto.randomUUID();
 
     activeRobotEl.textContent = robotTitle;
     activeKeyEl.textContent = `(${robotKey})`;
@@ -518,7 +521,6 @@
     busy = false;
     silentTurns = 0;
 
-    // intro chat + hang
     addMsg("ai", intro, robotTitle);
     history = [{ role:"assistant", content: intro }];
 
@@ -547,6 +549,7 @@
       addMsg("ai", "Válassz előbb egy robotot a kártyákra kattintva.", "AIVIO");
       return;
     }
+    if (!sessionId) sessionId = crypto.randomUUID();
     addMsg("me", v, "Te");
     history.push({ role:"user", content: v });
 

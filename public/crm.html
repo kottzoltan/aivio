@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>AIVIO CRM – Lista</title>
+  <title>AIVIO CRM – Leadek</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1220;color:#e7eefc}
     .wrap{max-width:1200px;margin:0 auto;padding:24px}
@@ -12,34 +12,38 @@
     .row{display:flex;gap:16px;flex-wrap:wrap;margin-top:20px}
     .card{flex:1;min-width:320px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px}
     label{display:block;font-size:13px;margin-top:8px;color:#9fb0d6}
-    input,select{width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(15,23,42,.9);color:#e7eefc;margin-top:4px}
-    button{padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(248,250,252,.08);color:#e7eefc;cursor:pointer;margin-top:10px}
-    button:hover{border-color:rgba(120,190,255,.4)}
+    input,select{width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(15,23,42,.9);color:#e7eefc;margin-top:4px;box-sizing:border-box}
+    button,a.btn{padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(248,250,252,.08);color:#e7eefc;cursor:pointer;margin-top:10px;text-decoration:none;display:inline-block}
+    button:hover,a.btn:hover{border-color:rgba(120,190,255,.4)}
     table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
     th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
-    th{color:#9fb0d6;font-weight:800;text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+    th{color:#9fb0d6;font-weight:800;text-transform:uppercase;font-size:11px}
     .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.9);font-size:12px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>AIVIO CRM</h1>
-    <div class="muted">Odoo leadek, cégek és időpontok kezelése egy oldalon.</div>
+    <div class="muted">Leadek és időpontok — saját adatbázis (robot beszélgetésekből automatikusan).</div>
 
     <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button onclick="loadAll()">Frissítés</button>
+      <a class="btn" href="/">← Főoldal</a>
+      <a class="btn" href="/crm-dashboard.html">Dashboard</a>
       <span class="pill"><span class="muted">Utolsó frissítés:</span> <span id="lastRefresh">—</span></span>
     </div>
 
     <div class="row">
-      <div class="card">
-        <div style="font-weight:800;margin-bottom:6px">Leadek (crm.lead)</div>
+      <div class="card" style="flex:2">
+        <div style="font-weight:800;margin-bottom:6px">Leadek</div>
         <table>
           <thead>
             <tr>
               <th>Név</th>
               <th>Email</th>
               <th>Telefon</th>
+              <th>Cég</th>
+              <th>Robot</th>
               <th>Státusz</th>
               <th>Akció</th>
             </tr>
@@ -49,56 +53,34 @@
       </div>
 
       <div class="card">
-        <div style="font-weight:800;margin-bottom:6px">Cégek (res.partner)</div>
-
-        <div>
-          <label>Cégnév</label>
-          <input id="companyName" placeholder="Új cég neve" />
-          <label>Email</label>
-          <input id="companyEmail" placeholder="info@pelda.hu" />
-          <label>Telefon</label>
-          <input id="companyPhone" placeholder="+36..." />
-          <button onclick="createCompany()">Új cég mentése</button>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Név</th>
-              <th>Email</th>
-              <th>Telefon</th>
-            </tr>
-          </thead>
-          <tbody id="companies"></tbody>
-        </table>
+        <div style="font-weight:800;margin-bottom:6px">Új lead</div>
+        <label>Név</label>
+        <input id="leadName" placeholder="Kovács János" />
+        <label>Email</label>
+        <input id="leadEmail" placeholder="info@pelda.hu" />
+        <label>Telefon</label>
+        <input id="leadPhone" placeholder="+36..." />
+        <label>Cég</label>
+        <input id="leadCompany" placeholder="Cégnév" />
+        <button onclick="createLead()">Mentés</button>
       </div>
     </div>
 
     <div class="row">
       <div class="card">
-        <div style="font-weight:800;margin-bottom:6px">Időpontok (calendar.event)</div>
+        <div style="font-weight:800;margin-bottom:6px">Időpontok</div>
 
-        <div>
-          <label>Megnevezés</label>
-          <input id="apptName" placeholder="Pl. Bemutató hívás" />
-          <label>Kezdés (YYYY-MM-DD HH:MM)</label>
-          <input id="apptStart" placeholder="2026-03-01 10:00" />
-          <label>Befejezés (YYYY-MM-DD HH:MM)</label>
-          <input id="apptStop" placeholder="2026-03-01 11:00" />
-          <label>Cég (opcionális)</label>
-          <select id="apptCompany">
-            <option value="">— nincs hozzárendelve —</option>
-          </select>
-          <button onclick="createAppointment()">Új időpont mentése</button>
-        </div>
+        <label>Megnevezés</label>
+        <input id="apptName" placeholder="Pl. Bemutató hívás" />
+        <label>Kezdés (ISO vagy YYYY-MM-DD HH:MM)</label>
+        <input id="apptStart" placeholder="2026-06-10 10:00" />
+        <label>Befejezés</label>
+        <input id="apptStop" placeholder="2026-06-10 11:00" />
+        <button onclick="createAppointment()">Új időpont</button>
 
         <table>
           <thead>
-            <tr>
-              <th>Név</th>
-              <th>Kezdés</th>
-              <th>Befejezés</th>
-            </tr>
+            <tr><th>Név</th><th>Kezdés</th><th>Befejezés</th></tr>
           </thead>
           <tbody id="appointments"></tbody>
         </table>
@@ -108,7 +90,6 @@
 
 <script>
 let stages = [];
-let companiesCache = [];
 
 async function loadStages() {
   stages = await fetch("/api/crm/stages").then(r => r.json());
@@ -121,47 +102,26 @@ async function loadLeads() {
 
   leads.forEach(l => {
     const stageOptions = stages.map(s =>
-      `<option value="${s.id}" ${l.stage_id && l.stage_id[0] === s.id ? "selected" : ""}>${s.name}</option>`
+      `<option value="${s.id}" ${l.stage === s.id ? "selected" : ""}>${s.name}</option>`
     ).join("");
 
     tbody.innerHTML += `
       <tr>
-        <td>${l.name}</td>
-        <td>${l.email_from || ""}</td>
+        <td>${l.name || ""}</td>
+        <td>${l.email || ""}</td>
         <td>${l.phone || ""}</td>
+        <td>${l.company || ""}</td>
+        <td class="muted">${l.robot || ""}</td>
         <td>
-          <select onchange="updateStage(${l.id}, this.value)">
+          <select onchange="updateStage('${l.id}', this.value)">
             ${stageOptions}
           </select>
         </td>
         <td>
-          <button onclick="addNote(${l.id})">Megjegyzés</button>
+          <button onclick="addNote('${l.id}')">Megjegyzés</button>
         </td>
       </tr>
     `;
-  });
-}
-
-async function loadCompanies() {
-  const companies = await fetch("/api/crm/companies").then(r => r.json());
-  companiesCache = companies;
-
-  const tbody = document.getElementById("companies");
-  const select = document.getElementById("apptCompany");
-
-  tbody.innerHTML = "";
-  select.innerHTML = `<option value="">— nincs hozzárendelve —</option>`;
-
-  companies.forEach(c => {
-    tbody.innerHTML += `
-      <tr>
-        <td>${c.name || ""}</td>
-        <td>${c.email || ""}</td>
-        <td>${c.phone || c.mobile || ""}</td>
-      </tr>
-    `;
-
-    select.innerHTML += `<option value="${c.id}">${c.name || ""}</option>`;
   });
 }
 
@@ -171,8 +131,8 @@ async function loadAppointments() {
   tbody.innerHTML = "";
 
   appts.forEach(a => {
-    const start = a.start ? new Date(a.start.replace(" ", "T")).toLocaleString("hu-HU") : "";
-    const stop = a.stop ? new Date(a.stop.replace(" ", "T")).toLocaleString("hu-HU") : "";
+    const start = a.start ? new Date(a.start).toLocaleString("hu-HU") : "";
+    const stop = a.stop ? new Date(a.stop).toLocaleString("hu-HU") : "";
     tbody.innerHTML += `
       <tr>
         <td>${a.name || ""}</td>
@@ -194,63 +154,55 @@ async function updateStage(leadId, stageId) {
 async function addNote(leadId) {
   const message = prompt("Írj megjegyzést:");
   if (!message) return;
-
   await fetch("/api/crm/add-note", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify({ leadId, message })
   });
-
   alert("Megjegyzés mentve");
 }
 
-async function createCompany() {
-  const name = document.getElementById("companyName").value.trim();
-  const email = document.getElementById("companyEmail").value.trim();
-  const phone = document.getElementById("companyPhone").value.trim();
-  if (!name) {
-    alert("Adj meg cégnév mezőt.");
-    return;
-  }
-  await fetch("/api/crm/companies", {
+async function createLead() {
+  const name = document.getElementById("leadName").value.trim();
+  const email = document.getElementById("leadEmail").value.trim();
+  const phone = document.getElementById("leadPhone").value.trim();
+  const company = document.getElementById("leadCompany").value.trim();
+  if (!name) { alert("Név kötelező."); return; }
+
+  await fetch("/api/crm/leads", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ name, email, phone })
+    body: JSON.stringify({ name, email, phone, company })
   });
-  document.getElementById("companyName").value = "";
-  document.getElementById("companyEmail").value = "";
-  document.getElementById("companyPhone").value = "";
-  await loadCompanies();
+
+  document.getElementById("leadName").value = "";
+  document.getElementById("leadEmail").value = "";
+  document.getElementById("leadPhone").value = "";
+  document.getElementById("leadCompany").value = "";
+  await loadLeads();
 }
 
 async function createAppointment() {
   const name = document.getElementById("apptName").value.trim();
   const start = document.getElementById("apptStart").value.trim();
   const stop = document.getElementById("apptStop").value.trim();
-  const partnerId = document.getElementById("apptCompany").value || null;
-
-  if (!name || !start || !stop) {
-    alert("Név, kezdés és befejezés mezők kötelezők.");
-    return;
-  }
+  if (!name || !start || !stop) { alert("Név, kezdés és befejezés kötelező."); return; }
 
   await fetch("/api/crm/appointments", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ name, start, stop, partnerId })
+    body: JSON.stringify({ name, start, stop })
   });
 
   document.getElementById("apptName").value = "";
   document.getElementById("apptStart").value = "";
   document.getElementById("apptStop").value = "";
-  document.getElementById("apptCompany").value = "";
-
   await loadAppointments();
 }
 
 async function loadAll() {
   await loadStages();
-  await Promise.all([loadLeads(), loadCompanies(), loadAppointments()]);
+  await Promise.all([loadLeads(), loadAppointments()]);
   document.getElementById("lastRefresh").textContent = new Date().toLocaleString("hu-HU");
 }
 
