@@ -11,9 +11,27 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_odoo_crm_secret_manager_2026_02_24";
+const REV = "rev_cloud_run_startup_fix_2026_06_08";
 
 app.use(express.json({ limit: "2mb" }));
+
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "https://kaizo.hu,https://www.kaizo.hu,http://127.0.0.1:8080,http://localhost:8080")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && CORS_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 //////////////////////////////////////////////////////////
@@ -1154,7 +1172,17 @@ const SECRET_NAMES = [
   "CMS_STORAGE_PROVIDER"
 ];
 
+function getMissingSecretNames() {
+  return SECRET_NAMES.filter((name) => !process.env[name]);
+}
+
 async function loadEnvFromSecretManager() {
+  const missing = getMissingSecretNames();
+  if (missing.length === 0) {
+    console.log("[Secret Manager] Minden env változó már be van állítva, kihagyva");
+    return;
+  }
+
   let projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
   if (!projectId && process.env.K_SERVICE) {
     try {
@@ -1170,8 +1198,7 @@ async function loadEnvFromSecretManager() {
     const { SecretManagerServiceClient } = await import("@google-cloud/secret-manager");
     const client = new SecretManagerServiceClient();
 
-    for (const name of SECRET_NAMES) {
-      if (process.env[name]) continue;
+    for (const name of missing) {
       try {
         const [version] = await client.accessSecretVersion({
           name: `projects/${projectId}/secrets/${name}/versions/latest`
@@ -1194,38 +1221,12 @@ async function loadEnvFromSecretManager() {
 // START SERVER
 //////////////////////////////////////////////////////////
 
-(async () => {
-  await loadEnvFromSecretManager();
-  app.listen(PORT, () => {
-    console.log(`AIVIO backend fut a ${PORT} porton | ${REV}`);
-  });
-})().catch((err) => {
-  console.error("Indítási hiba:", err);
-  process.exit(1);
+const HOST = process.env.HOST || "0.0.0.0";
+
+app.listen(PORT, HOST, () => {
+  console.log(`AIVIO backend fut a ${HOST}:${PORT} porton | ${REV}`);
 });
-/**
- * AIVIO backend — CORS a Kaizo statikus oldal számára
- * ================================================
- * Másold az aivio repo index.js fájljába, közvetlenül az
- *   app.use(express.json({ limit: "2mb" }));
- * sor UTÁN, majd deploy-old újra a Cloud Run-t.
- *
- * Env (opcionális): CORS_ORIGINS="https://kaizo.hu,https://www.kaizo.hu"
- */
 
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || "https://kaizo.hu,https://www.kaizo.hu,http://127.0.0.1:8080,http://localhost:8080")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && CORS_ORIGINS.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
+loadEnvFromSecretManager().catch((err) => {
+  console.warn("[Secret Manager] Háttérbetöltés hiba:", err?.message || err);
 });
