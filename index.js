@@ -7,13 +7,19 @@ import fs from "fs";
 
 console.log("[AIVIO] indulás…");
 
+if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  const credPath = path.join("/tmp", "gcp-credentials.json");
+  fs.writeFileSync(credPath, process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath;
+}
+
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_cloud_run_deploy_v2_2026_06_08";
+const REV = "rev_netlify_2026_06_08";
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -40,8 +46,17 @@ app.use(express.static(path.join(__dirname, "public")));
 // FILE STORAGE (JSON - CLOUD RUN KOMPATIBILIS DEMO)
 //////////////////////////////////////////////////////////
 
+function isServerlessRuntime() {
+  return !!(
+    process.env.K_SERVICE ||
+    process.env.NETLIFY ||
+    process.env.NETLIFY_DEV ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
+}
+
 const DATA_DIR = process.env.DATA_DIR || (
-  process.env.K_SERVICE
+  isServerlessRuntime()
     ? path.join("/tmp", "aivio-data")
     : path.join(__dirname, "data")
 );
@@ -1228,28 +1243,34 @@ async function loadEnvFromSecretManager() {
 }
 
 //////////////////////////////////////////////////////////
-// START SERVER
+// START SERVER (local dev only — Netlify uses serverless function)
 //////////////////////////////////////////////////////////
 
-const HOST = process.env.HOST || "0.0.0.0";
+export { app, REV };
 
-const server = app.listen(PORT, HOST, () => {
-  console.log(`[AIVIO] backend fut: ${HOST}:${PORT} | ${REV}`);
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
-server.on("error", (err) => {
-  console.error("[AIVIO] szerver indítási hiba:", err);
-  process.exit(1);
-});
+if (isMain) {
+  const HOST = process.env.HOST || "0.0.0.0";
 
-process.on("uncaughtException", (err) => {
-  console.error("[AIVIO] uncaughtException:", err);
-});
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`[AIVIO] backend fut: ${HOST}:${PORT} | ${REV}`);
+  });
 
-process.on("unhandledRejection", (err) => {
-  console.error("[AIVIO] unhandledRejection:", err);
-});
+  server.on("error", (err) => {
+    console.error("[AIVIO] szerver indítási hiba:", err);
+    process.exit(1);
+  });
 
-loadEnvFromSecretManager().catch((err) => {
-  console.warn("[Secret Manager] Háttérbetöltés hiba:", err?.message || err);
-});
+  process.on("uncaughtException", (err) => {
+    console.error("[AIVIO] uncaughtException:", err);
+  });
+
+  process.on("unhandledRejection", (err) => {
+    console.error("[AIVIO] unhandledRejection:", err);
+  });
+
+  loadEnvFromSecretManager().catch((err) => {
+    console.warn("[Secret Manager] Háttérbetöltés hiba:", err?.message || err);
+  });
+}

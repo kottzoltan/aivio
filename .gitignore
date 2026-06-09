@@ -1,6 +1,9 @@
 # dependencies
 node_modules/
 
+# netlify local dev
+.netlify
+
 # runtime/demo data
 data/
 
