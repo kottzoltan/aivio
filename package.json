@@ -20,6 +20,7 @@
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "openai": "^6.18.0",
+    "@supabase/supabase-js": "^2.49.8",
     "serverless-http": "^3.2.0",
     "ws": "^8.18.3"
   },

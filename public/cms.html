@@ -115,7 +115,7 @@ async function loadCms(){
   robots = data.robots || [];
 
   const st = data.storage || {};
-  byId('storageInfo').textContent = `Storage: ${st.activeStorage || 'ismeretlen'} (provider: ${st.provider || 'n/a'})`;
+  byId('storageInfo').textContent = `Storage: ${st.activeStorage || 'ismeretlen'} (provider: ${st.provider || 'n/a'})${st.supabaseReady ? ' ✓ Supabase' : ''}`;
 
   renderRobotList();
   renderSaveLog(data.saveLog || []);
