@@ -1,0 +1,9 @@
+# Exclude from Cloud Run / Cloud Build source uploads
+.git
+.gitignore
+node_modules
+data
+.DS_Store
+*.md
+.env
+.env.*
