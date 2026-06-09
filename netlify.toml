@@ -1,0 +1,22 @@
+[build]
+  command = "npm ci"
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = [
+    "@google-cloud/datastore",
+    "@google-cloud/firestore",
+    "@google-cloud/secret-manager"
+  ]
+
+[functions.server]
+  timeout = 26
+
+# Static files in public/ are served first; API routes go to Express.
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/server"
+  status = 200
+  force = false
