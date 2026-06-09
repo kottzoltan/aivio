@@ -5,13 +5,15 @@ import { fileURLToPath } from "url";
 import fetch from "node-fetch";
 import fs from "fs";
 
+console.log("[AIVIO] indulás…");
+
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 8080;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REV = "rev_cloud_run_startup_fix_2026_06_08";
+const REV = "rev_cloud_run_deploy_v2_2026_06_08";
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -38,7 +40,11 @@ app.use(express.static(path.join(__dirname, "public")));
 // FILE STORAGE (JSON - CLOUD RUN KOMPATIBILIS DEMO)
 //////////////////////////////////////////////////////////
 
-const DATA_DIR = path.join(__dirname, "data");
+const DATA_DIR = process.env.DATA_DIR || (
+  process.env.K_SERVICE
+    ? path.join("/tmp", "aivio-data")
+    : path.join(__dirname, "data")
+);
 const CONV_FILE = path.join(DATA_DIR, "conversations.json");
 const STRUCTURED_FILE = path.join(DATA_DIR, "structured-conversations.json");
 const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
@@ -132,13 +138,17 @@ async function getCmsStorageInfo() {
   };
 }
 function ensureDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(CONV_FILE)) fs.writeFileSync(CONV_FILE, JSON.stringify([]));
-  if (!fs.existsSync(STRUCTURED_FILE)) fs.writeFileSync(STRUCTURED_FILE, JSON.stringify([]));
-  if (!fs.existsSync(APPOINTMENTS_FILE)) fs.writeFileSync(APPOINTMENTS_FILE, JSON.stringify([]));
-  if (!fs.existsSync(SURVEY_FILE)) fs.writeFileSync(SURVEY_FILE, JSON.stringify([]));
-  if (!fs.existsSync(ROBOT_CMS_FILE)) fs.writeFileSync(ROBOT_CMS_FILE, JSON.stringify({}));
-  if (!fs.existsSync(ROBOT_CMS_SYNC_FILE)) fs.writeFileSync(ROBOT_CMS_SYNC_FILE, JSON.stringify([]));
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(CONV_FILE)) fs.writeFileSync(CONV_FILE, JSON.stringify([]));
+    if (!fs.existsSync(STRUCTURED_FILE)) fs.writeFileSync(STRUCTURED_FILE, JSON.stringify([]));
+    if (!fs.existsSync(APPOINTMENTS_FILE)) fs.writeFileSync(APPOINTMENTS_FILE, JSON.stringify([]));
+    if (!fs.existsSync(SURVEY_FILE)) fs.writeFileSync(SURVEY_FILE, JSON.stringify([]));
+    if (!fs.existsSync(ROBOT_CMS_FILE)) fs.writeFileSync(ROBOT_CMS_FILE, JSON.stringify({}));
+    if (!fs.existsSync(ROBOT_CMS_SYNC_FILE)) fs.writeFileSync(ROBOT_CMS_SYNC_FILE, JSON.stringify([]));
+  } catch (err) {
+    console.warn("[AIVIO] data könyvtár inicializálás sikertelen:", err?.message || err);
+  }
 }
 
 function readJsonArray(filePath) {
@@ -1223,8 +1233,21 @@ async function loadEnvFromSecretManager() {
 
 const HOST = process.env.HOST || "0.0.0.0";
 
-app.listen(PORT, HOST, () => {
-  console.log(`AIVIO backend fut a ${HOST}:${PORT} porton | ${REV}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`[AIVIO] backend fut: ${HOST}:${PORT} | ${REV}`);
+});
+
+server.on("error", (err) => {
+  console.error("[AIVIO] szerver indítási hiba:", err);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[AIVIO] uncaughtException:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("[AIVIO] unhandledRejection:", err);
 });
 
 loadEnvFromSecretManager().catch((err) => {
