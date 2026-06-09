@@ -22,7 +22,7 @@
     table{width:100%;border-collapse:collapse;margin-top:10px}
     th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
     th{color:#9fb0d6;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-    .btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e7eefc;cursor:pointer}
+    .btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e7eefc;cursor:pointer;text-decoration:none;display:inline-block}
     .btn:hover{border-color:rgba(120,190,255,.35)}
   </style>
 </head>
@@ -31,9 +31,14 @@
     <div class="top">
       <div>
         <div class="h1">AIVIO CRM – Dashboard</div>
-        <div class="muted">Odoo CRM adatok, AIVIO felületen</div>
+        <div class="muted">Saját adatbázis — robot beszélgetésekből gyűjtött leadek</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center"><span class="muted" id="lastRefresh">—</span><button class="btn" onclick="loadAll()">Frissítés</button></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn" href="/crm.html">Leadek</a>
+        <a class="btn" href="/">Főoldal</a>
+        <span class="muted" id="lastRefresh">—</span>
+        <button class="btn" onclick="loadAll()">Frissítés</button>
+      </div>
     </div>
 
     <div class="grid">
@@ -61,7 +66,7 @@
         <div style="font-weight:900;margin-bottom:8px">Legfrissebb leadek</div>
         <table>
           <thead>
-            <tr><th>Név</th><th>Státusz</th><th>Dátum</th></tr>
+            <tr><th>Név</th><th>Státusz</th><th>Robot</th><th>Dátum</th></tr>
           </thead>
           <tbody id="recent"></tbody>
         </table>
@@ -83,7 +88,6 @@ async function loadPipeline(){
   document.getElementById("kpiWeighted").innerHTML = fmt(data.totals?.weighted) + ' <small>várható</small>';
 
   const totalCount = (data.pipeline || []).reduce((a,x)=>a+x.count, 0) || 1;
-
   const root = document.getElementById("pipeline");
   root.innerHTML = "";
 
@@ -94,7 +98,7 @@ async function loadPipeline(){
     row.innerHTML = `
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
         <div style="font-weight:800">${s.stageName}</div>
-        <div class="muted">${s.count} lead • exp: ${fmt(s.sumExpectedRevenue)} • w: ${fmt(s.sumWeightedRevenue)}</div>
+        <div class="muted">${s.count} lead</div>
       </div>
       <div class="bar"><div style="width:${pct}%"></div></div>
     `;
@@ -107,11 +111,9 @@ async function loadRecent(){
   const tb = document.getElementById("recent");
   tb.innerHTML = "";
   leads.forEach(l => {
-    const stage = (l.stage_id && l.stage_id[1]) ? l.stage_id[1] : "";
-    const d = (l.create_date || "").replace(" ", "T");
-    const date = d ? new Date(d).toLocaleString("hu-HU") : "";
+    const date = l.createdAt ? new Date(l.createdAt).toLocaleString("hu-HU") : "";
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${l.name || ""}</td><td class="muted">${stage}</td><td class="muted">${date}</td>`;
+    tr.innerHTML = `<td>${l.name || ""}</td><td class="muted">${l.stageName || ""}</td><td class="muted">${l.robot || ""}</td><td class="muted">${date}</td>`;
     tb.appendChild(tr);
   });
 }
