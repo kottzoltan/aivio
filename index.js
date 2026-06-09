@@ -1,10 +1,10 @@
 import express from "express";
 import OpenAI from "openai";
 import path from "path";
-import { fileURLToPath } from "url";
 import fetch from "node-fetch";
 import fs from "fs";
 
+import { getProjectRoot, isDirectNodeEntry } from "./lib/paths.js";
 import { buildRobotSystemPrompt, ROBOTS } from "./lib/robots.js";
 import { getRobotConfig, listRobotConfigs, saveRobotConfig } from "./lib/cms.js";
 import {
@@ -26,8 +26,7 @@ import { ensureStorageFiles, getStorageInfo } from "./lib/storage.js";
 
 console.log("[AIVIO] indulás…");
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const projectRoot = getProjectRoot();
 
 if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
   const credPath = path.join("/tmp", "gcp-credentials.json");
@@ -37,11 +36,11 @@ if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_APPLICATION_C
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
-const REV = "rev_robots_cms_db_2026_06_08";
+const REV = "rev_netlify_fix_2026_06_09";
 
 app.use(express.json({ limit: "2mb" }));
 
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || "https://kaizo.hu,https://www.kaizo.hu,http://127.0.0.1:8080,http://localhost:8080")
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "https://kaizo.hu,https://www.kaizo.hu,https://aivio3.netlify.app,http://127.0.0.1:8080,http://localhost:8080")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -58,7 +57,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  app.use(express.static(path.join(projectRoot, "public")));
+}
 
 ensureStorageFiles();
 
@@ -396,7 +397,7 @@ async function loadEnvFromSecretManager() {
 
 export { app, REV };
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+const isMain = isDirectNodeEntry(import.meta?.url, process.argv[1]);
 
 if (isMain) {
   const HOST = process.env.HOST || "0.0.0.0";

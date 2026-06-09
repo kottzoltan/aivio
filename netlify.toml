@@ -5,11 +5,18 @@
 
 [functions]
   node_bundler = "esbuild"
+  included_files = ["lib/**"]
   external_node_modules = [
     "@google-cloud/datastore",
     "@google-cloud/firestore",
-    "@google-cloud/secret-manager"
+    "@google-cloud/secret-manager",
+    "express",
+    "openai",
+    "serverless-http"
   ]
+
+[build.environment]
+  NODE_VERSION = "18"
 
 [functions.server]
   timeout = 26
