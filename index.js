@@ -36,7 +36,7 @@ if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_APPLICATION_C
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
-const REV = "rev_netlify_fix_2026_06_09";
+const REV = "rev_supabase_ws_fix_2026_06_09";
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -74,7 +74,15 @@ app.get("/health", async (req, res) => {
     rev: REV,
     openai: !!process.env.OPENAI_API_KEY,
     elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-    storage: storage.activeStorage
+    supabase: storage.supabaseReady,
+    storage: storage.activeStorage,
+    debug: {
+      cmsStorageProvider: process.env.CMS_STORAGE_PROVIDER || "(nincs, default: file)",
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
+      supabasePreferred: storage.supabasePreferred,
+      supabaseError: storage.supabaseLastError || null
+    }
   });
 });
 
