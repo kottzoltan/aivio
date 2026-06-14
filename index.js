@@ -38,18 +38,30 @@ if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_APPLICATION_C
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
-const REV = "rev_surveys_transcripts_stt_2026_06_08";
+const REV = "rev_kaizo_cors_embed_2026_06_14";
 
 app.use(express.json({ limit: "2mb" }));
 
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || "https://kaizo.hu,https://www.kaizo.hu,https://aivio3.netlify.app,http://127.0.0.1:8080,http://localhost:8080")
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "https://kaizo.hu,https://www.kaizo.hu,http://kaizo.hu,http://www.kaizo.hu,https://aivio3.netlify.app,http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:5500,http://localhost:5500")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
+function isAllowedCorsOrigin(origin) {
+  if (!origin) return false;
+  if (CORS_ORIGINS.includes(origin)) return true;
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    if (host === "kaizo.hu" || host.endsWith(".kaizo.hu")) return true;
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    if (host.endsWith(".netlify.app")) return true;
+  } catch (_) {}
+  return false;
+}
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && CORS_ORIGINS.includes(origin)) {
+  if (isAllowedCorsOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   }
