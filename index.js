@@ -174,7 +174,8 @@ app.post("/speak", async (req, res) => {
       },
       body: JSON.stringify({
         text,
-        model_id: model_id || "eleven_flash_v2_5"
+        model_id: model_id || "eleven_flash_v2_5",
+        output_format: "mp3_44100_128"
       })
     });
 
@@ -191,7 +192,9 @@ app.post("/speak", async (req, res) => {
 
     const audioBuffer = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "audio/mpeg");
-    res.send(audioBuffer);
+    res.setHeader("Content-Length", String(audioBuffer.length));
+    res.setHeader("Cache-Control", "no-store");
+    res.end(audioBuffer);
   } catch (err) {
     console.error("SPEAK ERROR:", err);
     res.status(500).send("TTS error");
