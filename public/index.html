@@ -192,27 +192,28 @@
   let busy = false;
   let history = []; // {role:"user"/"assistant", content:"..."}
   let activeAudio = null;
+  let audioCtx = null;
   let micStream = null;
   let silentTurns = 0;
   let audioUnlocked = false;
   let robotsCache = [];
 
+  function getAudioContext() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtx) audioCtx = new Ctx();
+    return audioCtx;
+  }
+
   // Böngésző autoplay policy: user gesture azonnal (await előtt!)
   function unlockAudioPlayback() {
     if (audioUnlocked) return;
     try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (Ctx) {
-        const ctx = new Ctx();
+      const ctx = getAudioContext();
+      if (ctx) {
         ctx.resume().then(() => { audioUnlocked = true; }).catch(() => {});
       }
     } catch (_) {}
-  }
-
-  function audioErrorMessage(audio) {
-    const codes = { 1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK", 3: "MEDIA_ERR_DECODE", 4: "MEDIA_ERR_SRC_NOT_SUPPORTED" };
-    const code = audio?.error?.code;
-    return code ? (codes[code] || `kód ${code}`) : "ismeretlen audio hiba";
   }
 
   function setStatus(kind, text) {
@@ -247,8 +248,8 @@
 
   function stopActiveAudio(){
     if(!activeAudio) return;
-    try { activeAudio.pause(); } catch(e) {}
-    try { activeAudio.currentTime = 0; } catch(e) {}
+    try { activeAudio.stop(0); } catch(e) {}
+    try { activeAudio.disconnect?.(); } catch(e) {}
     activeAudio = null;
   }
 
@@ -267,13 +268,12 @@
     return micStream;
   }
 
-  async function monitorBargeIn(audio){
+  async function monitorBargeIn(isActive){
     try {
       const stream = await ensureMicStream();
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return false;
+      const ctx = getAudioContext();
+      if (!ctx) return false;
 
-      const ctx = new Ctx();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
       const src = ctx.createMediaStreamSource(stream);
@@ -284,7 +284,8 @@
         let speechFrames = 0;
 
         const tick = () => {
-          if (audio.paused || audio.ended) {
+          if (!isActive()) {
+            try { src.disconnect(); } catch(e) {}
             resolve(false);
             return;
           }
@@ -304,6 +305,7 @@
           }
 
           if (speechFrames >= 4) {
+            try { src.disconnect(); } catch(e) {}
             resolve(true);
             return;
           }
@@ -331,46 +333,57 @@
       throw new Error(`/speak ${r.status} ${t}`);
     }
 
-    const rawBlob = await r.blob();
-    const mime = (r.headers.get("content-type") || "audio/mpeg").split(";")[0].trim();
-    const blob = rawBlob.type ? rawBlob : new Blob([rawBlob], { type: mime });
-    if (!blob.size) throw new Error("Üres hangfájl érkezett a szervertől");
+    const arrayBuffer = await r.arrayBuffer();
+    if (!arrayBuffer.byteLength) throw new Error("Üres hangfájl érkezett a szervertől");
 
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio();
-    audio.preload = "auto";
-    audio.src = url;
-    activeAudio = audio;
+    const ctx = getAudioContext();
+    if (!ctx) throw new Error("A böngésző nem támogatja a hang lejátszást.");
 
-    await new Promise((resolve, reject) => {
-      const fail = (msg) => {
-        URL.revokeObjectURL(url);
-        reject(new Error(msg));
-      };
-      const timer = setTimeout(() => fail("Audio betöltés timeout"), 15000);
-      audio.onerror = () => { clearTimeout(timer); fail(`Audio betöltési hiba: ${audioErrorMessage(audio)}`); };
-      audio.oncanplaythrough = () => { clearTimeout(timer); resolve(); };
-      audio.load();
-    });
+    if (ctx.state === "suspended") {
+      await ctx.resume().catch(() => {});
+    }
+
+    let audioBuffer;
+    try {
+      audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    } catch (e) {
+      throw new Error(`Hang dekódolási hiba: ${e.message || e}`);
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+    activeAudio = source;
 
     const interrupted = await new Promise((resolve, reject) => {
-      audio.onended = () => resolve(false);
-      audio.onerror = () => reject(new Error(`Audio lejátszási hiba: ${audioErrorMessage(audio)}`));
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        if (activeAudio === source) activeAudio = null;
+        resolve(value);
+      };
 
-      audio.play().then(async () => {
-        if (!allowBargeIn) return;
-        const detected = await monitorBargeIn(audio);
-        if (detected && !audio.paused && !audio.ended) {
-          try { audio.pause(); } catch(e) {}
-          resolve(true);
+      source.onended = () => finish(false);
+
+      try {
+        source.start(0);
+      } catch (e) {
+        if (activeAudio === source) activeAudio = null;
+        reject(new Error(`Hang lejátszás blokkolva: engedélyezd a hangot, vagy kattints újra.`));
+        return;
+      }
+
+      if (!allowBargeIn) return;
+
+      monitorBargeIn(() => !settled).then((detected) => {
+        if (detected && !settled) {
+          try { source.stop(0); } catch(e) {}
+          finish(true);
         }
-      }).catch((e) => {
-        reject(new Error(`Hang lejátszás blokkolva (${e.name || "error"}): engedélyezd a hangot, vagy kattints újra.`));
-      });
+      }).catch(() => {});
     });
 
-    if (activeAudio === audio) activeAudio = null;
-    URL.revokeObjectURL(url);
     return { interrupted };
   }
 
