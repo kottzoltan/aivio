@@ -10,8 +10,6 @@
     "@google-cloud/datastore",
     "@google-cloud/firestore",
     "@google-cloud/secret-manager",
-    "@supabase/supabase-js",
-    "ws",
     "express",
     "openai",
     "serverless-http"
