@@ -259,10 +259,6 @@
     return u8[0] === 0xff && (u8[1] & 0xe0) === 0xe0; // MPEG frame sync
   }
 
-  function invalidAudioPreview(buffer) {
-    const text = new TextDecoder().decode(buffer.slice(0, 160)).trim();
-    return text ? text.slice(0, 100) : "(bináris adat)";
-  }
 
   function stopActiveAudio(){
     if(!activeAudio) return;
@@ -343,23 +339,28 @@
     }
   }
 
-  async function playViaHtmlAudio(arrayBuffer, allowBargeIn) {
-    const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
+  async function playViaHtmlAudio(blob, allowBargeIn) {
     const url = URL.createObjectURL(blob);
     const audio = new Audio();
     audio.preload = "auto";
     audio.src = url;
     activeAudio = audio;
 
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      if (activeAudio === audio) activeAudio = null;
+    };
+
     try {
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("Audio betöltés timeout")), 20000);
         const done = () => { clearTimeout(timer); resolve(); };
-        audio.addEventListener("canplay", done, { once: true });
+        audio.addEventListener("canplaythrough", done, { once: true });
         audio.addEventListener("error", () => {
           clearTimeout(timer);
           reject(new Error(`Audio betöltési hiba: ${audioErrorMessage(audio)}`));
         }, { once: true });
+        audio.load();
       });
 
       return await new Promise((resolve, reject) => {
@@ -367,13 +368,16 @@
         const finish = (value) => {
           if (settled) return;
           settled = true;
-          if (activeAudio === audio) activeAudio = null;
+          cleanup();
           resolve(value);
         };
 
         audio.onended = () => finish(false);
         audio.onerror = () => {
-          if (!settled) reject(new Error(`Audio lejátszási hiba: ${audioErrorMessage(audio)}`));
+          if (!settled) {
+            cleanup();
+            reject(new Error(`Audio lejátszási hiba: ${audioErrorMessage(audio)}`));
+          }
         };
 
         audio.play().then(async () => {
@@ -385,58 +389,15 @@
           }
         }).catch((e) => {
           if (!settled) {
+            cleanup();
             reject(new Error(`Hang lejátszás blokkolva: engedélyezd a hangot, vagy kattints újra. (${e.name || "error"})`));
           }
         });
       });
-    } finally {
-      URL.revokeObjectURL(url);
-      if (activeAudio === audio) activeAudio = null;
+    } catch (e) {
+      cleanup();
+      throw e;
     }
-  }
-
-  async function playViaWebAudio(arrayBuffer, allowBargeIn) {
-    const ctx = getAudioContext();
-    if (!ctx) throw new Error("Web Audio API nem elérhető");
-
-    if (ctx.state === "suspended") {
-      await ctx.resume().catch(() => {});
-    }
-
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-    activeAudio = source;
-
-    return await new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (value) => {
-        if (settled) return;
-        settled = true;
-        if (activeAudio === source) activeAudio = null;
-        resolve(value);
-      };
-
-      source.onended = () => finish(false);
-
-      try {
-        source.start(0);
-      } catch (e) {
-        if (activeAudio === source) activeAudio = null;
-        reject(new Error(`Hang lejátszás blokkolva: engedélyezd a hangot, vagy kattints újra.`));
-        return;
-      }
-
-      if (!allowBargeIn) return;
-
-      monitorBargeIn(() => !settled).then((detected) => {
-        if (detected && !settled) {
-          try { source.stop(0); } catch(e) {}
-          finish(true);
-        }
-      }).catch(() => {});
-    });
   }
 
   async function ttsSpeak(text, opts = {}){
@@ -452,23 +413,19 @@
       throw new Error(`/speak ${r.status} ${t}`);
     }
 
-    const arrayBuffer = await r.arrayBuffer();
-    if (!arrayBuffer.byteLength) throw new Error("Üres hangfájl érkezett a szervertől");
-    if (!isLikelyMp3(arrayBuffer)) {
-      throw new Error(`Érvénytelen hangfájl érkezett: ${invalidAudioPreview(arrayBuffer)}`);
+    const rawBlob = await r.blob();
+    const mime = (r.headers.get("content-type") || "audio/mpeg").split(";")[0].trim();
+    const blob = rawBlob.type ? rawBlob : new Blob([rawBlob], { type: mime });
+    if (!blob.size) throw new Error("Üres hangfájl érkezett a szervertől");
+
+    const header = await blob.slice(0, 4).arrayBuffer();
+    if (!isLikelyMp3(header)) {
+      const preview = await blob.slice(0, 160).text().catch(() => "");
+      throw new Error(`Érvénytelen hangfájl érkezett: ${preview.trim().slice(0, 100) || "(bináris adat)"}`);
     }
 
-    try {
-      const interrupted = await playViaHtmlAudio(arrayBuffer, allowBargeIn);
-      return { interrupted };
-    } catch (htmlErr) {
-      try {
-        const interrupted = await playViaWebAudio(arrayBuffer, allowBargeIn);
-        return { interrupted };
-      } catch (webErr) {
-        throw new Error(`Hang lejátszás sikertelen (${htmlErr.message}; ${webErr.message})`);
-      }
-    }
+    const interrupted = await playViaHtmlAudio(blob, allowBargeIn);
+    return { interrupted };
   }
 
   // ===== STT (Web Speech API) =====
