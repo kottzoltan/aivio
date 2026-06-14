@@ -194,6 +194,26 @@
   let activeAudio = null;
   let micStream = null;
   let silentTurns = 0;
+  let audioUnlocked = false;
+  let robotsCache = [];
+
+  // Böngésző autoplay policy: user gesture azonnal (await előtt!)
+  function unlockAudioPlayback() {
+    if (audioUnlocked) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        ctx.resume().then(() => { audioUnlocked = true; }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  function audioErrorMessage(audio) {
+    const codes = { 1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK", 3: "MEDIA_ERR_DECODE", 4: "MEDIA_ERR_SRC_NOT_SUPPORTED" };
+    const code = audio?.error?.code;
+    return code ? (codes[code] || `kód ${code}`) : "ismeretlen audio hiba";
+  }
 
   function setStatus(kind, text) {
     statusEl.textContent = text;
@@ -310,18 +330,33 @@
       const t = await r.text().catch(()=> "");
       throw new Error(`/speak ${r.status} ${t}`);
     }
-    const blob = await r.blob();
+
+    const rawBlob = await r.blob();
+    const mime = (r.headers.get("content-type") || "audio/mpeg").split(";")[0].trim();
+    const blob = rawBlob.type ? rawBlob : new Blob([rawBlob], { type: mime });
+    if (!blob.size) throw new Error("Üres hangfájl érkezett a szervertől");
+
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.src = url;
     activeAudio = audio;
 
-    const interrupted = await new Promise((resolve, reject) => {
-      const done = () => {
-        resolve(false);
+    await new Promise((resolve, reject) => {
+      const fail = (msg) => {
+        URL.revokeObjectURL(url);
+        reject(new Error(msg));
       };
+      const timer = setTimeout(() => fail("Audio betöltés timeout"), 15000);
+      audio.onerror = () => { clearTimeout(timer); fail(`Audio betöltési hiba: ${audioErrorMessage(audio)}`); };
+      audio.oncanplaythrough = () => { clearTimeout(timer); resolve(); };
+      audio.load();
+    });
 
-      audio.onended = done;
-      audio.onerror = reject;
+    const interrupted = await new Promise((resolve, reject) => {
+      audio.onended = () => resolve(false);
+      audio.onerror = () => reject(new Error(`Audio lejátszási hiba: ${audioErrorMessage(audio)}`));
+
       audio.play().then(async () => {
         if (!allowBargeIn) return;
         const detected = await monitorBargeIn(audio);
@@ -329,7 +364,9 @@
           try { audio.pause(); } catch(e) {}
           resolve(true);
         }
-      }).catch(reject);
+      }).catch((e) => {
+        reject(new Error(`Hang lejátszás blokkolva (${e.name || "error"}): engedélyezd a hangot, vagy kattints újra.`));
+      });
     });
 
     if (activeAudio === audio) activeAudio = null;
@@ -528,7 +565,8 @@
       await ttsSpeak(intro);
     } catch(err){
       console.error(err);
-      addMsg("ai", "Nem tudok beszélni (TTS hiba). Nézd a logot.", "Hiba");
+      const msg = (err && err.message) ? err.message : String(err);
+      addMsg("ai", `Nem tudok beszélni: ${msg}`, "Hiba");
       running = false;
       setStatus("err", "ERROR");
       setLoopState("ERROR");
@@ -592,8 +630,7 @@
 
     try{
       const data = await fetch("/robots").then(r=>r.json());
-      // a kártyák fixek, de a backend lista validálja
-      // ha akarod később innen generáljuk a kártyákat is
+      robotsCache = data.robots || [];
     }catch(e){}
   })();
 
@@ -601,22 +638,21 @@
   document.getElementById("cards").addEventListener("click", async (e) => {
     const card = e.target.closest(".card");
     if(!card) return;
+    unlockAudioPlayback(); // szinkron — user gesture megtartása
     const key = card.dataset.robot;
 
-    // kérjünk robot intro-t a backendből (a rendszer prompt központi legyen)
     try{
-      const data = await fetch("/robots").then(r=>r.json());
-      const item = (data.robots || []).find(x => x.key === key);
+      const item = robotsCache.find(x => x.key === key);
       const title = item?.title || key;
       const intro = item?.intro || "Szia! Ari vagyok.";
       stopAll();
       await startForRobot(key, title, intro);
     }catch(err){
-      addMsg("ai", "Nem érem el a /robots endpointot.", "Hiba");
+      addMsg("ai", (err && err.message) ? err.message : "Robot indítási hiba.", "Hiba");
     }
   });
 
-  el("sendBtn").addEventListener("click", sendText);
+  el("sendBtn").addEventListener("click", () => { unlockAudioPlayback(); sendText(); });
   el("textInput").addEventListener("keydown", (e)=> { if(e.key==="Enter") sendText(); });
   el("stopBtn").addEventListener("click", stopAll);
 
