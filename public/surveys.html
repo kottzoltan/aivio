@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIVIO – Felmérések</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1220;color:#e7eefc}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px}
+    .top{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .h1{font-size:26px;font-weight:800;margin:0}
+    .muted{color:#9fb0d6}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+    @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+    .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px}
+    .kpi{font-size:24px;font-weight:900}
+    .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+    .half{flex:1;min-width:320px}
+    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+    th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
+    th{color:#9fb0d6;font-weight:800;font-size:11px;text-transform:uppercase}
+    tr.clickable{cursor:pointer}
+    tr.clickable:hover{background:rgba(255,255,255,.04)}
+    .btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e7eefc;cursor:pointer;text-decoration:none;display:inline-block}
+    .btn:hover{border-color:rgba(120,190,255,.35)}
+    .pill{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;background:rgba(90,160,255,.15);border:1px solid rgba(90,160,255,.25)}
+    .pill.done{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.25)}
+    .detail{margin-top:16px}
+    .chatbox{max-height:420px;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;background:rgba(2,6,23,.55)}
+    .msg{margin:8px 0;padding:10px 12px;border-radius:12px;max-width:900px}
+    .user{background:rgba(99,102,241,.16);border:1px solid rgba(99,102,241,.25)}
+    .ai{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.20)}
+    .meta{color:#9fb0d6;font-size:11px;margin-bottom:4px}
+    .scores{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .score{padding:6px 10px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font-weight:700}
+    .bar{height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
+    .bar>div{height:100%;background:rgba(90,160,255,.75)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="h1">Elégedettségi felmérések</div>
+        <div class="muted">Külön tárolva a leadektől — pontszámok, összesítés és teljes beszélgetés-leirat</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn" href="/crm-dashboard.html">CRM Dashboard</a>
+        <a class="btn" href="/">Főoldal</a>
+        <button class="btn" onclick="loadAll()">Frissítés</button>
+      </div>
+    </div>
+
+    <div class="grid" id="kpis">
+      <div class="card"><div class="muted">Felmérések</div><div class="kpi" id="kpiTotal">—</div></div>
+      <div class="card"><div class="muted">Befejezett</div><div class="kpi" id="kpiDone">—</div></div>
+      <div class="card"><div class="muted">Átlag pontszám</div><div class="kpi" id="kpiAvg">—</div></div>
+      <div class="card"><div class="muted">Válaszok száma</div><div class="kpi" id="kpiResponses">—</div></div>
+    </div>
+
+    <div class="row">
+      <div class="card half">
+        <div style="font-weight:900;margin-bottom:8px">Pontszám eloszlás (1–5)</div>
+        <div id="distribution"></div>
+      </div>
+      <div class="card half">
+        <div style="font-weight:900;margin-bottom:8px">Átlag kérdésenként</div>
+        <div id="questionAvgs"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div style="font-weight:900;margin-bottom:8px">Felmérések listája — kattints egy sorra a teljes beszélgetéshez</div>
+      <table>
+        <thead>
+          <tr><th>Dátum</th><th>Átlag</th><th>Pontszámok</th><th>Válaszok</th><th>Státusz</th></tr>
+        </thead>
+        <tbody id="surveyRows"></tbody>
+      </table>
+    </div>
+
+    <div class="card detail" id="detailPanel" style="display:none">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:900" id="detailTitle">Felmérés részletei</div>
+          <div class="muted" id="detailMeta"></div>
+        </div>
+        <button class="btn" onclick="closeDetail()">Bezárás</button>
+      </div>
+      <div class="scores" id="detailScores"></div>
+      <div class="chatbox" id="detailTranscript" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+<script>
+function fmtDate(v){
+  return v ? new Date(v).toLocaleString("hu-HU") : "—";
+}
+
+function renderDistribution(dist){
+  const root = document.getElementById("distribution");
+  root.innerHTML = "";
+  const max = Math.max(1, ...Object.values(dist || {}));
+  Object.entries(dist || {}).forEach(([score, count]) => {
+    const pct = Math.round((count / max) * 100);
+    const row = document.createElement("div");
+    row.style.margin = "8px 0";
+    row.innerHTML = `
+      <div style="display:flex;justify-content:space-between"><span>${score} pont</span><span class="muted">${count} db</span></div>
+      <div class="bar"><div style="width:${pct}%"></div></div>
+    `;
+    root.appendChild(row);
+  });
+}
+
+function renderQuestionAvgs(items){
+  const root = document.getElementById("questionAvgs");
+  root.innerHTML = "";
+  (items || []).forEach((q) => {
+    const row = document.createElement("div");
+    row.style.margin = "8px 0";
+    row.innerHTML = `<div style="display:flex;justify-content:space-between"><span>${q.label}</span><span class="muted">${q.avg ?? "—"} (${q.count} válasz)</span></div>`;
+    root.appendChild(row);
+  });
+  if (!items?.length) root.innerHTML = '<div class="muted">Még nincs elég adat.</div>';
+}
+
+async function loadStats(){
+  const s = await fetch("/api/crm/surveys/stats").then(r=>r.json());
+  document.getElementById("kpiTotal").textContent = s.totalSurveys ?? 0;
+  document.getElementById("kpiDone").textContent = s.completedSurveys ?? 0;
+  document.getElementById("kpiAvg").textContent = s.avgOverallScore ?? "—";
+  document.getElementById("kpiResponses").textContent = s.totalResponses ?? 0;
+  renderDistribution(s.scoreDistribution);
+  renderQuestionAvgs(s.questionAverages);
+}
+
+async function loadSurveys(){
+  const surveys = await fetch("/api/crm/surveys").then(r=>r.json());
+  const tb = document.getElementById("surveyRows");
+  tb.innerHTML = "";
+  surveys.forEach((s) => {
+    const tr = document.createElement("tr");
+    tr.className = "clickable";
+    tr.onclick = () => openDetail(s.id);
+    const scores = (s.scores || []).join(", ") || "—";
+    const status = s.status === "completed"
+      ? '<span class="pill done">kész</span>'
+      : '<span class="pill">folyamatban</span>';
+    tr.innerHTML = `
+      <td>${fmtDate(s.updatedAt || s.createdAt)}</td>
+      <td><b>${s.avgScore ?? "—"}</b></td>
+      <td>${scores}</td>
+      <td>${s.responseCount ?? 0}</td>
+      <td>${status}</td>
+    `;
+    tb.appendChild(tr);
+  });
+  if (!surveys.length) {
+    tb.innerHTML = '<tr><td colspan="5" class="muted">Még nincs felmérés. Indíts egyet a főoldalon: Elégedettségmérés robot.</td></tr>';
+  }
+}
+
+async function openDetail(id){
+  const data = await fetch(`/api/crm/surveys/${encodeURIComponent(id)}`).then(r=>r.json());
+  document.getElementById("detailPanel").style.display = "block";
+  document.getElementById("detailTitle").textContent = data.title || "Felmérés";
+  document.getElementById("detailMeta").textContent = `${fmtDate(data.createdAt)} · ${data.status} · session: ${data.sessionId}`;
+
+  const scoresEl = document.getElementById("detailScores");
+  scoresEl.innerHTML = "";
+  (data.scores || []).forEach((n, i) => {
+    const span = document.createElement("span");
+    span.className = "score";
+    span.textContent = `${i + 1}. kérdés: ${n}`;
+    scoresEl.appendChild(span);
+  });
+
+  const transcript = (data.transcript?.length ? data.transcript : data.sessionTranscript?.transcript) || [];
+  const box = document.getElementById("detailTranscript");
+  box.innerHTML = "";
+  transcript.forEach((t) => {
+    const div = document.createElement("div");
+    div.className = "msg " + (t.role === "user" ? "user" : "ai");
+    const who = t.role === "user" ? "Válaszadó" : "Ari";
+    const score = t.score != null ? ` · pont: ${t.score}` : "";
+    div.innerHTML = `<div class="meta">${who}${score}</div>${escapeHtml(t.text || "")}`;
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+  document.getElementById("detailPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeDetail(){
+  document.getElementById("detailPanel").style.display = "none";
+}
+
+function escapeHtml(s){
+  return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+}
+
+async function loadAll(){
+  await Promise.all([loadStats(), loadSurveys()]);
+}
+
+loadAll();
+setInterval(loadAll, 30000);
+</script>
+</body>
+</html>

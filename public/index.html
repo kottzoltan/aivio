@@ -108,7 +108,8 @@
       <div class="pill">Backend: <span id="backend">checking…</span></div>
       <a class="pill" href="/cms.html" style="text-decoration:none">Robot CMS</a>
       <a class="pill" href="/crm-dashboard.html" style="text-decoration:none">CRM Dashboard</a>
-      <a class="pill" href="/crm.html" style="text-decoration:none">CRM lista / szerkesztés</a>
+      <a class="pill" href="/crm.html" style="text-decoration:none">CRM lista</a>
+      <a class="pill" href="/surveys.html" style="text-decoration:none">Felmérések</a>
     </div>
 
     <div class="grid" id="cards">
@@ -174,7 +175,8 @@
   const TTS_MODEL = "eleven_flash_v2_5";
   const LISTEN_TIMEOUT_MS = 12000;
   const POST_TTS_DELAY_MS = 600;
-  const ONEND_GRACE_MS = 350;
+  const ONEND_GRACE_MS = 500;
+  const EMPTY_LISTEN_RETRIES = 1;
   const MAX_SILENT_TURNS = 6;
   const SOFT_PROMPT_AT = 3;
 
@@ -454,8 +456,9 @@
     if(!SpeechRecognition) return null;
     const rec = new SpeechRecognition();
     rec.lang = "hu-HU";
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 3;
     return rec;
   }
 
@@ -486,7 +489,13 @@
       let done = false;
       let timeoutId = null;
       let onendTimer = null;
-      let capturedText = null;
+      let finalParts = [];
+      let bestInterim = "";
+
+      const combinedText = () => {
+        const finals = finalParts.join(" ").trim();
+        return finals || bestInterim.trim();
+      };
 
       const finish = (value, isError = false) => {
         if (done) return;
@@ -502,30 +511,39 @@
       };
 
       r.onresult = (ev) => {
-        capturedText = ev.results?.[0]?.[0]?.transcript?.trim() || "";
-        finish(capturedText);
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const piece = ev.results[i]?.[0]?.transcript?.trim() || "";
+          if (!piece) continue;
+          if (ev.results[i].isFinal) {
+            finalParts.push(piece);
+            bestInterim = "";
+          } else {
+            bestInterim = piece;
+          }
+        }
+        const text = combinedText();
+        if (text) finish(text);
       };
       r.onerror = (e) => {
         const code = e?.error || "unknown";
         if (code === "no-speech" || code === "aborted") {
-          finish("");
+          finish(combinedText());
           return;
         }
         finish(new Error("STT error: " + code), true);
       };
       r.onend = () => {
-        // Chrome gyakran onend-et küld onresult előtt — várunk egy kicsit
         if (onendTimer) clearTimeout(onendTimer);
         onendTimer = setTimeout(() => {
           if (done) return;
-          finish(capturedText ?? "");
+          finish(combinedText());
         }, ONEND_GRACE_MS);
       };
 
       timeoutId = setTimeout(() => {
         try { r.stop(); } catch(e) {}
         setTimeout(() => {
-          if (!done) finish(capturedText ?? "");
+          if (!done) finish(combinedText());
         }, ONEND_GRACE_MS + 150);
       }, LISTEN_TIMEOUT_MS);
 
@@ -543,6 +561,15 @@
         finish(err, true);
       }
     });
+  }
+
+  async function listenForUser(){
+    let text = await listenOnce();
+    for (let i = 0; i < EMPTY_LISTEN_RETRIES && !text; i++) {
+      await sleep(250);
+      text = await listenOnce();
+    }
+    return text;
   }
 
   async function think(text){
@@ -604,7 +631,7 @@
           await sleep(POST_TTS_DELAY_MS);
           if(!running) { busy = false; return; }
 
-          currentInput = await listenOnce();
+          currentInput = await listenForUser();
           if(!running){ busy = false; return; }
 
           if(!currentInput){

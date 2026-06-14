@@ -29,6 +29,7 @@
     <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button onclick="loadAll()">Frissítés</button>
       <a class="btn" href="/">← Főoldal</a>
+      <a class="btn" href="/surveys.html">Felmérések</a>
       <a class="btn" href="/crm-dashboard.html">Dashboard</a>
       <span class="pill"><span class="muted">Utolsó frissítés:</span> <span id="lastRefresh">—</span></span>
     </div>
@@ -119,6 +120,7 @@ async function loadLeads() {
         </td>
         <td>
           <button onclick="addNote('${l.id}')">Megjegyzés</button>
+          ${l.sessionId ? `<button onclick="viewTranscript('${l.id}')">Leirat</button>` : ""}
         </td>
       </tr>
     `;
@@ -160,6 +162,15 @@ async function addNote(leadId) {
     body: JSON.stringify({ leadId, message })
   });
   alert("Megjegyzés mentve");
+}
+
+async function viewTranscript(leadId) {
+  const data = await fetch(`/api/crm/leads/${encodeURIComponent(leadId)}/transcript`).then(r => r.json());
+  const lines = (data.transcript || []).map((t) => {
+    const who = t.role === "user" ? "Ügyfél" : "Ari";
+    return `${who}: ${t.text}`;
+  }).join("\n\n");
+  alert(lines || "Nincs leirat ehhez a leadhez.");
 }
 
 async function createLead() {

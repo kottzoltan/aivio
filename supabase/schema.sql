@@ -1,7 +1,8 @@
 -- AIVIO Supabase séma
 -- Futtasd: Supabase Dashboard → SQL Editor → New query → Run
 
--- Leadek, időpontok, beszélgetések, CMS napló (egy tábla, collection alapján)
+-- Leadek, időpontok, beszélgetések, felmérések, CMS napló (egy tábla, collection alapján)
+-- collections: leads, appointments, conversations, surveys, cms_save_log
 create table if not exists public.aivio_records (
   collection text not null,
   id text not null,

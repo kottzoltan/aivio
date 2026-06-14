@@ -22,6 +22,8 @@ import {
   listCmsSaveLog
 } from "./lib/leads.js";
 import { processConversationTurn } from "./lib/conversation.js";
+import { listSurveys, getSurvey, getSurveyStats } from "./lib/surveys.js";
+import { getSessionTranscript } from "./lib/transcripts.js";
 import { ensureStorageFiles, getStorageInfo } from "./lib/storage.js";
 
 console.log("[AIVIO] indulás…");
@@ -36,7 +38,7 @@ if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_APPLICATION_C
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
-const REV = "rev_human_conversation_flow_2026_06_08";
+const REV = "rev_surveys_transcripts_stt_2026_06_08";
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -140,7 +142,7 @@ app.post("/think", async (req, res) => {
       createdAt: new Date().toISOString()
     });
 
-    const { lead } = await processConversationTurn({
+    const { lead, survey } = await processConversationTurn({
       sessionId: sessionId || `anon-${Date.now()}`,
       robot,
       history: chatHistory,
@@ -148,7 +150,12 @@ app.post("/think", async (req, res) => {
       aiText
     });
 
-    res.json({ text: aiText, sessionId: sessionId || lead.sessionId, leadId: lead.id });
+    res.json({
+      text: aiText,
+      sessionId: sessionId || lead?.sessionId || survey?.sessionId,
+      leadId: lead?.id || null,
+      surveyId: survey?.id || null
+    });
   } catch (err) {
     console.error("THINK ERROR:", err);
     res.status(500).json({ error: "Thinking failed" });
@@ -286,6 +293,55 @@ app.get("/api/crm/appointments", async (req, res) => {
     res.json(await listAppointments());
   } catch (err) {
     res.status(500).json({ error: "Appointments failed" });
+  }
+});
+
+app.get("/api/crm/surveys", async (req, res) => {
+  try {
+    res.json(await listSurveys());
+  } catch (err) {
+    console.error("CRM SURVEYS ERROR:", err);
+    res.status(500).json({ error: "Surveys failed" });
+  }
+});
+
+app.get("/api/crm/surveys/stats", async (req, res) => {
+  try {
+    res.json(await getSurveyStats());
+  } catch (err) {
+    console.error("CRM SURVEY STATS ERROR:", err);
+    res.status(500).json({ error: "Survey stats failed" });
+  }
+});
+
+app.get("/api/crm/surveys/:id", async (req, res) => {
+  try {
+    const survey = await getSurvey(req.params.id);
+    if (!survey) return res.status(404).json({ error: "Survey not found" });
+    const sessionTranscript = await getSessionTranscript(req.params.id);
+    res.json({ ...survey, sessionTranscript });
+  } catch (err) {
+    res.status(500).json({ error: "Survey fetch failed" });
+  }
+});
+
+app.get("/api/crm/transcripts/:sessionId", async (req, res) => {
+  try {
+    const data = await getSessionTranscript(req.params.sessionId);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Transcript fetch failed" });
+  }
+});
+
+app.get("/api/crm/leads/:id/transcript", async (req, res) => {
+  try {
+    const lead = await getLead(req.params.id);
+    if (!lead?.sessionId) return res.status(404).json({ error: "Lead or session not found" });
+    const data = await getSessionTranscript(lead.sessionId);
+    res.json({ lead, ...data });
+  } catch (err) {
+    res.status(500).json({ error: "Lead transcript failed" });
   }
 });
 

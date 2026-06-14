@@ -34,6 +34,7 @@
         <div class="muted">Saját adatbázis — robot beszélgetésekből gyűjtött leadek</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn" href="/surveys.html">Felmérések</a>
         <a class="btn" href="/crm.html">Leadek</a>
         <a class="btn" href="/">Főoldal</a>
         <span class="muted" id="lastRefresh">—</span>
@@ -69,6 +70,24 @@
             <tr><th>Név</th><th>Státusz</th><th>Robot</th><th>Dátum</th></tr>
           </thead>
           <tbody id="recent"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card half">
+        <div style="font-weight:900;margin-bottom:8px">Felmérések összesítő</div>
+        <div class="grid" style="grid-template-columns:repeat(2,1fr);margin-top:0">
+          <div><div class="muted">Átlag pont</div><div class="kpi" id="surveyAvg">—</div></div>
+          <div><div class="muted">Felmérések</div><div class="kpi" id="surveyCount">—</div></div>
+        </div>
+        <div id="surveyHint" class="muted" style="margin-top:10px"></div>
+      </div>
+      <div class="card half">
+        <div style="font-weight:900;margin-bottom:8px">Legutóbbi felmérések</div>
+        <table>
+          <thead><tr><th>Dátum</th><th>Átlag</th><th>Pontszámok</th></tr></thead>
+          <tbody id="surveyRecent"></tbody>
         </table>
       </div>
     </div>
@@ -118,8 +137,28 @@ async function loadRecent(){
   });
 }
 
+async function loadSurveyStats(){
+  try {
+    const s = await fetch("/api/crm/surveys/stats").then(r=>r.json());
+    document.getElementById("surveyAvg").textContent = s.avgOverallScore ?? "—";
+    document.getElementById("surveyCount").textContent = s.totalSurveys ?? 0;
+    document.getElementById("surveyHint").textContent = `${s.totalResponses || 0} válasz összesen · részletek: Felmérések oldal`;
+
+    const tb = document.getElementById("surveyRecent");
+    tb.innerHTML = "";
+    (s.recent || []).slice(0, 5).forEach((row) => {
+      const tr = document.createElement("tr");
+      const date = row.updatedAt ? new Date(row.updatedAt).toLocaleString("hu-HU") : "";
+      tr.innerHTML = `<td class="muted">${date}</td><td><b>${row.avgScore ?? "—"}</b></td><td>${(row.scores || []).join(", ") || "—"}</td>`;
+      tb.appendChild(tr);
+    });
+  } catch (e) {
+    document.getElementById("surveyHint").textContent = "Felmérés adatok nem elérhetők.";
+  }
+}
+
 async function loadAll(){
-  await Promise.all([loadPipeline(), loadRecent()]);
+  await Promise.all([loadPipeline(), loadRecent(), loadSurveyStats()]);
   document.getElementById("lastRefresh").textContent = `Frissítve: ${new Date().toLocaleTimeString("hu-HU")}`;
 }
 
